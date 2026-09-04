@@ -400,13 +400,29 @@ class _Selector extends StatefulWidget {
 class _SelectorState extends State<_Selector> {
   String _texto = '';
 
-  // Las cien más los cuatro casos de identidad —dos empresas con RIF, dos
-  // empleados de un proveedor—, para que los cuatro sean seleccionables acá.
-  // Van al principio: son los que hay que poder encontrar sin escribir nada.
-  static const _todas = <PersonaDePrueba>[
-    ...casosDeIdentidadDePrueba,
-    ...cienPersonas,
-  ];
+  /// ═══════════════════════════════════════════════════════════════════════
+  /// 🔴 SÓLO LAS CIEN — pedido de Juan, 2026-09-04
+  /// ═══════════════════════════════════════════════════════════════════════
+  ///
+  /// > *«Borrá todos los usuarios de la app de Collection y agregá los usuarios
+  /// > en base a la información del Excel con los cien usuarios.»*
+  ///
+  /// Acá se juntaban `casosDeIdentidadDePrueba` —dos empresas con RIF y dos
+  /// empleados de un proveedor— **y encima iban al principio**, así que al abrir
+  /// el selector lo primero que se veía eran cuatro personas que **no existen en
+  /// la cartera de prueba**: `empresa1`, `empresa2`, `empleado1`, `empleado2`.
+  ///
+  /// Y no es un detalle de orden. Esos cuatro no están en notificaciones, así que
+  /// entrar con uno de ellos y mandarle un push da exactamente el resultado que
+  /// hay que poder distinguir de un defecto: **el envío sale, el otro lado
+  /// contesta bien, y no le llega a nadie** — porque esa persona no existe del
+  /// otro lado. Probar la integración con ellos delante es garantizar una hora
+  /// buscando un problema que no está en el código.
+  ///
+  /// Los cuatro casos siguen declarados en `personas_de_prueba.dart` y se pueden
+  /// volver a enchufar cuando haga falta probar RIF y organización. Lo que no
+  /// pueden es estar en el selector de una prueba de integración.
+  static const _todas = cienPersonas;
 
   @override
   Widget build(BuildContext context) {
