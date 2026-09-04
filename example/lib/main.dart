@@ -112,7 +112,7 @@ class _PantallaState extends State<Pantalla> {
   }
 
   Future<void> _entrar(PersonaDePrueba p) async {
-    _anotar('entrando como ${p.usuario} (${p.nombre})');
+    _anotar('entrando como ${p.nombre} · ${p.cedula}');
     try {
       final r = await AkPush.alIniciarSesion(
         userId: p.userId,
@@ -134,13 +134,18 @@ class _PantallaState extends State<Pantalla> {
         //
         // No hay que declarar estos campos en ningún lado: el servicio los DESCUBRE
         // de lo que llega y arma los filtros solo. Cada comercio manda los suyos.
+        /// 🔴 SÓLO LAS COLUMNAS DEL EXCEL — corregido por Juan el 2026-09-04:
+        /// *«esos no son datos míos, yo tengo un UUID o un identificador; apegate a lo que
+        /// tengo en el Excel»*.
+        ///
+        /// Salieron `usuario`, `sucursal` y `plan`, que venían del juego de prueba viejo.
+        /// Inventar columnas que el archivo no tiene es cómo una prueba deja de probar el
+        /// caso real: se filtra por una sucursal que en la cartera de verdad no existe, y el
+        /// filtro pasa igual.
         datos: {
           'nombre': p.nombre,
-          'usuario': p.usuario,
           'correo': p.correo,
-          'sucursal': p.sucursal,
           'ciudad': p.ciudad,
-          'plan': p.plan,
           // Los cuatro que trajo la reconciliación con notificaciones (2026-09-04).
           //
           // 🔴 El teléfono va acá, con los datos, y NO entre los identificadores: la
@@ -305,11 +310,11 @@ class _PantallaState extends State<Pantalla> {
                   Text(_estado, style: t.textTheme.headlineSmall),
                   if (_dentro != null) ...[
                     const SizedBox(height: 10),
-                    Text('${_dentro!.usuario} · ${_dentro!.nombre}',
+                    Text(_dentro!.nombre,
                         style: t.textTheme.titleMedium),
                     Text(
                         '${_dentro!.tipo == TipoDeSujeto.juridica ? "RIF" : "cédula"} '
-                        '${_dentro!.cedula} · ${_dentro!.sucursal} · ${_dentro!.plan}',
+                        '${_dentro!.userId}\n${_dentro!.cedula} · ${_dentro!.estado}',
                         style: t.textTheme.bodySmall),
                     // Sólo aparece para los empleados de proveedor del juego de
                     // prueba: es lo que demuestra que el sujeto PERTENECE a la
@@ -433,7 +438,8 @@ class _SelectorState extends State<_Selector> {
         : <PersonaDePrueba>{
             ..._todas.where((p) => p.nombre.toLowerCase().contains(_texto.toLowerCase())),
             ..._todas.where((p) => p.cedula == _texto),
-            ..._todas.where((p) => p.usuario.contains(_texto)),
+            // 🔴 Se busca por el IDENTIFICADOR, que es el dato del comercio.
+            ..._todas.where((p) => p.userId.contains(_texto)),
           }.toList();
 
     return DraggableScrollableSheet(
@@ -469,8 +475,10 @@ class _SelectorState extends State<_Selector> {
                         : '';
                 return ListTile(
                   dense: true,
-                  title: Text('${p.usuario} · ${p.nombre}$marca'),
-                  subtitle: Text('${p.cedula} · ${p.sucursal} · ${p.plan}'),
+                  title: Text('${p.nombre}$marca'),
+                  // El identificador primero: es la clave con la que esta persona
+                  // existe en notificaciones, y es lo que hay que poder leer al elegirla.
+                  subtitle: Text('${p.userId}\n${p.cedula} · ${p.estado}'),
                   onTap: () => Navigator.pop(c, p),
                 );
               },
