@@ -141,6 +141,13 @@ class _PantallaState extends State<Pantalla> {
           'sucursal': p.sucursal,
           'ciudad': p.ciudad,
           'plan': p.plan,
+          // Los cuatro que trajo la reconciliación con notificaciones (2026-09-04). El
+          // teléfono va acá igual que el correo: es una dirección, y sin él la integración
+          // no puede probar un envío por SMS a la misma persona de los dos lados.
+          if (p.telefono.isNotEmpty) 'telefono': p.telefono,
+          if (p.pais.isNotEmpty) 'pais': p.pais,
+          if (p.estado.isNotEmpty) 'estado': p.estado,
+          if (p.genero.isNotEmpty) 'genero': p.genero,
         },
       );
       setState(() {
