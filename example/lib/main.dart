@@ -141,9 +141,13 @@ class _PantallaState extends State<Pantalla> {
           'sucursal': p.sucursal,
           'ciudad': p.ciudad,
           'plan': p.plan,
-          // Los cuatro que trajo la reconciliación con notificaciones (2026-09-04). El
-          // teléfono va acá igual que el correo: es una dirección, y sin él la integración
-          // no puede probar un envío por SMS a la misma persona de los dos lados.
+          // Los cuatro que trajo la reconciliación con notificaciones (2026-09-04).
+          //
+          // 🔴 El teléfono va acá, con los datos, y NO entre los identificadores: la
+          // identidad es el documento. Un teléfono lo pueden compartir dos personas, así
+          // que no identifica a nadie — y Collection manda push, que va al token del
+          // aparato y nunca a un número. Quien direcciona por teléfono es notificaciones, y
+          // allá el teléfono ya tiene su rol declarado.
           if (p.telefono.isNotEmpty) 'telefono': p.telefono,
           if (p.pais.isNotEmpty) 'pais': p.pais,
           if (p.estado.isNotEmpty) 'estado': p.estado,

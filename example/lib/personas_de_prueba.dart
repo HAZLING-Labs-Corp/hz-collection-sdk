@@ -3,9 +3,15 @@
 /// No es una lista de nombres: cada una trae lo que el SDK necesita para
 /// demostrar las tres cosas que hay que poder probar sin un comercio real.
 ///
-///   **alias** — cédula y correo. Son por los que se DIRECCIONA: únicos dentro
-///   del comercio, y se puede enviar a cualquiera de los dos. Es lo que permite
-///   probar «mandale a la cédula 12137717» sin saber su `userId`.
+///   **el documento** — la cédula. Es lo que IDENTIFICA: único dentro del
+///   comercio, y es lo que permite que un sistema de afuera pida un envío
+///   —«mandale a la cédula 13185607»— sin conocer el `userId` interno.
+///
+///   🔴 Y es LO ÚNICO que identifica. El correo y el teléfono son direcciones, no
+///   identificadores: una dirección la pueden compartir dos personas —dos hermanos
+///   con el mismo teléfono es el caso más común de todos— así que no identifican a
+///   nadie. Van entre los datos. Corregido el 2026-09-04, después de que este
+///   archivo dijera lo contrario durante un rato.
 ///
 ///   **atributos** — nombre, sucursal, ciudad y plan. Son para FILTRAR y
 ///   MOSTRAR, no para direccionar. Es lo que permite probar el envío segmentado
@@ -102,17 +108,27 @@ class PersonaDePrueba {
   final String cedula;
   final String correo;
 
-  /// 🔴 EL TELÉFONO ES UN ALIAS, NO UN ATRIBUTO — y la diferencia no es de forma.
-  ///
-  /// Por acá se DIRECCIONA: es a dónde le llega un SMS o un WhatsApp, igual que el correo.
-  /// Ponerlo entre los atributos lo dejaría para mostrar y filtrar, pero no para enviar — y
-  /// el envío por teléfono es justamente lo que la integración con notificaciones tiene que
-  /// poder probar.
-  ///
-  /// Vacío por omisión para no obligar a los cuatro casos del final a declararlo.
-  final String telefono;
-
   // ── atributos · se filtra y se muestra por acá ─────────────────────────
+  //
+  // 🔴 EL TELÉFONO VA ACÁ, Y NO ENTRE LOS IDENTIFICADORES — corregido por Juan el
+  // 2026-09-04: *«el teléfono es el teléfono, el alias es la cédula»*.
+  //
+  // Yo lo había puesto entre los alias razonando que «por ahí se direcciona», y ese
+  // razonamiento es de OTRO sistema. Acá no aplica por dos motivos, y los dos importan:
+  //
+  //   · **Collection manda push, no SMS.** Un push va al token del aparato, nunca a un
+  //     número. Collection no direcciona por teléfono nunca: quien lo hace es
+  //     notificaciones, y allá el teléfono ya tiene su rol declarado (`CONTACT`).
+  //
+  //   · **Un identificador identifica a UNA persona.** Dos hermanos comparten un teléfono
+  //     —es el caso más común de todos— así que un teléfono no identifica a nadie. Tratarlo
+  //     como identificador es exactamente el defecto que el resolvedor de notificaciones
+  //     ataja registrando un conflicto en vez de fusionar dos personas.
+  //
+  // La identidad es el documento. El teléfono es un dato de la persona, igual que el correo
+  // —que de hecho ya viajaba en `datos` en `main.dart`, y era `comoAlta` el que estaba
+  // inventando un cajón que el servicio no tiene—.
+  final String telefono;
   final String nombre;
   final String sucursal;
   final String ciudad;
@@ -144,18 +160,27 @@ class PersonaDePrueba {
   /// Lo que el backend del comercio le mandaría al servicio para darla de alta.
   Map<String, dynamic> get comoAlta => {
         'userId': userId,
-        // El teléfono va entre los alias porque se direcciona por él. Los vacíos no viajan:
-        // un alias en blanco no direcciona a nadie y ocuparía un lugar en el índice.
-        'alias': {
-          'cedula': cedula,
-          'correo': correo,
-          if (telefono.isNotEmpty) 'telefono': telefono,
-        },
+        /**
+         * 🔴 EL ALIAS ES LA CÉDULA. Corregido el 2026-09-04.
+         *
+         * Acá decía `{'cedula': cedula, 'correo': correo}` y estaba mal de dos maneras a la
+         * vez. La primera: **el servicio no tiene ningún concepto de alias** — tiene
+         * `documento`, que es la identidad, y `datos`, que es todo lo que el comercio manda y
+         * por lo que se puede filtrar. La segunda: `main.dart`, que es el código que de
+         * verdad llama, **ya mandaba el correo en `datos`**. Así que este getter describía
+         * una forma que no existía y contradecía a la llamada real.
+         *
+         * Un identificador identifica a una persona. La cédula sí; el correo y el teléfono
+         * son direcciones, y una dirección la pueden compartir dos personas.
+         */
+        'alias': {'cedula': cedula},
         'atributos': {
           'nombre': nombre,
+          'correo': correo,
           'sucursal': sucursal,
           'ciudad': ciudad,
           'plan': plan,
+          if (telefono.isNotEmpty) 'telefono': telefono,
           if (pais.isNotEmpty) 'pais': pais,
           if (estado.isNotEmpty) 'estado': estado,
           if (genero.isNotEmpty) 'genero': genero,
