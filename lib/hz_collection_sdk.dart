@@ -48,8 +48,16 @@ export 'src/device_info.dart' show DatosDelDispositivo;
 // quien no quiera dibujar nada pone `AkPush.campanita()` y listo.
 export 'src/campanita.dart' show CampanitaDeAvisos, EstadoDeAvisos;
 export 'src/modal_de_ubicacion.dart' show ModalDeUbicacion;
+// 🔴 `ModoDeLectura` va en el `show` o el comercio no puede ni nombrar el modo que le
+// devuelve `AkPush.modoDeUbicacion` — y sin poder nombrarlo no puede comprobar si el
+// segundo plano quedó andando, que es justo lo que hay que comprobar.
 export 'src/politica.dart'
-    show PoliticaDeUbicacion, TextosDeUbicacion, MomentoDeUbicacion;
+    show
+        PoliticaDeUbicacion,
+        TextosDeUbicacion,
+        TextosDeSiempre,
+        MomentoDeUbicacion,
+        ModoDeLectura;
 export 'src/push_message.dart' show AccionDePush, PushMessage;
 export 'src/remote_config.dart' show AkPushConfig, InfoDeModulo;
 // El sujeto — quien se loguea — y su documento y organización. Es la raíz del

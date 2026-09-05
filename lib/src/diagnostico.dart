@@ -446,7 +446,13 @@ class Diagnostico {
         // La ubicación NO es un eslabón de la cadena de avisos: que no ande no impide
         // que lleguen los push. Va abajo, y sólo si el comercio la tiene activada.
         if (ubicacion != null)
-          _fila('ubicación', ubicacion!.puedeUbicar, _detalleUbicacion()),
+          _fila(
+              'ubicación',
+              // 🔴 El modo pedido que no arrancó cuenta como ROTO. Un eslabón en verde que
+              // hay que leer con lupa para descubrir que está en rojo es peor que no
+              // tenerlo: el que diagnostica lo saltea.
+              ubicacion!.puedeUbicar && !ubicacion!.elModoNoArranco,
+              _detalleUbicacion()),
         // El último error no es un eslabón y por eso no se marca ok ni ROTO: un
         // error viejo con la cadena entera no es una falla, es un antecedente.
         '  ${'último error'.padRight(14)}      ${ultimoError ?? 'ninguno'}',
@@ -466,6 +472,13 @@ class Diagnostico {
     final falta = <String>[
       if (!u.permitida) 'sin permiso',
       if (!u.servicioPrendido) 'teléfono con la ubicación apagada',
+      // 🔴 Y ÉSTE ES EL QUE NO ESTABA. Con los dos interruptores en verde y el segundo plano
+      // apagado por un renglón que le falta al manifiesto, el diagnóstico decía «ok» sobre
+      // un comercio que cree que mide todo el día y mide una vez por sesión.
+      if (u.elModoNoArranco)
+        'el modo «${u.modoPedido}» NO arrancó: corre «${u.modoActivo}»',
+      if (u.faltaDeclarar.isNotEmpty)
+        'a la aplicación le falta declarar ${u.faltaDeclarar.join(", ")}',
     ];
     final cuando = u.ultimoEnvio == null
         ? 'nunca se mandó una posición'
@@ -473,6 +486,9 @@ class Diagnostico {
     return [
       if (falta.isNotEmpty) falta.join(' + '),
       cuando,
+      if (u.modoActivo != 'alEntrar')
+        'modo ${u.modoActivo} · ${u.lecturasDeLaSesion} leídas / '
+            '${u.enviosDeLaSesion} enviadas en esta sesión',
       if (u.ultimoMotivo != null) 'motivo: ${u.ultimoMotivo}',
     ].join(' · ');
   }
@@ -607,7 +623,30 @@ class EstadoDeUbicacion {
     required this.servicioPrendido,
     this.ultimoEnvio,
     this.ultimoMotivo,
+    this.modoPedido = 'alEntrar',
+    this.modoActivo = 'alEntrar',
+    this.faltaDeclarar = const [],
+    this.lecturasDeLaSesion = 0,
+    this.enviosDeLaSesion = 0,
   });
+
+  /// 🔴 EL MODO QUE PIDIÓ EL COMERCIO Y EL QUE DE VERDAD ESTÁ CORRIENDO, POR SEPARADO.
+  ///
+  /// Que sean dos campos es todo el punto: el caso que hay que poder ver de un vistazo es
+  /// «pidió segundo plano y está corriendo alEntrar», que es un comercio convencido de que
+  /// mide quince días y que no tiene ni una lectura. Con un solo campo, ese caso se ve
+  /// idéntico a un comercio que nunca pidió nada.
+  final String modoPedido;
+  final String modoActivo;
+
+  /// Qué renglones le faltan al manifiesto de la APLICACIÓN para el segundo plano. Vacío
+  /// mientras no se haya consultado, o cuando está todo declarado.
+  final List<String> faltaDeclarar;
+
+  /// Cuántas posiciones dejó esta sesión, y cuántas salieron hacia el servicio. Sirve para
+  /// medir el efecto de un modo en vez de creerlo.
+  final int lecturasDeLaSesion;
+  final int enviosDeLaSesion;
 
   /// La aplicación tiene el permiso.
   final bool permitida;
@@ -632,10 +671,20 @@ class EstadoDeUbicacion {
   bool get puedeUbicar =>
       permitida && servicioPrendido && (ultimoEnvio != null || ultimoMotivo == null);
 
+  /// 🔴 El modo que se pidió no está corriendo. Es distinto de «no puede ubicar»: los dos
+  /// interruptores pueden estar bien y el segundo plano estar apagado igual, porque a la
+  /// aplicación le falta un renglón en el manifiesto.
+  bool get elModoNoArranco => modoPedido != modoActivo;
+
   Map<String, dynamic> toJson() => {
         'permitida': permitida,
         'servicioPrendido': servicioPrendido,
         'ultimoEnvio': ultimoEnvio?.toIso8601String(),
         'ultimoMotivo': ultimoMotivo,
+        'modoPedido': modoPedido,
+        'modoActivo': modoActivo,
+        if (faltaDeclarar.isNotEmpty) 'faltaDeclarar': faltaDeclarar,
+        'lecturasDeLaSesion': lecturasDeLaSesion,
+        'enviosDeLaSesion': enviosDeLaSesion,
       };
 }

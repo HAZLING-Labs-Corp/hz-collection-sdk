@@ -319,6 +319,10 @@ final List<PermisoDeclarado> catalogoDePermisos = [
     base: BaseLegal.consentimiento,
   ),
 
+  // 🔴 QUEDA EN EL MÓDULO «rastreo» A PROPÓSITO, aunque desde el 2026-09-05 quien lo usa es
+  // `ubicacion` en modo `enSegundoPlano`. Moverlo lo cambiaría de grupo en la consola del
+  // comercio, y ese agrupamiento lo sirve el back: es un cambio de los dos lados, no de éste.
+  // Lo que sí importa que se lea acá está en los requisitos.
   PermisoDeclarado(
     nombre: 'android.permission.ACCESS_BACKGROUND_LOCATION',
     plataforma: Plataforma.ambas,
@@ -353,11 +357,87 @@ final List<PermisoDeclarado> catalogoDePermisos = [
         'pedir «siempre» de entrada.',
         fuente: 'developer.apple.com/app-store/review/guidelines/ · 5.1.5',
       ),
+      Requisito(
+        '🔴 No viene solo: hay que declarar además FOREGROUND_SERVICE y —si la aplicación '
+        'apunta a Android 14— FOREGROUND_SERVICE_LOCATION. Sin el segundo, el sistema tumba '
+        'la aplicación al arrancar el servicio. Los dos tienen ficha propia en este catálogo.',
+        fuente: 'developer.android.com/about/versions/14/changes/fgs-types-required',
+      ),
+      Requisito(
+        'Lo declara la APLICACIÓN, nunca hz_collection_sdk. El SDK lo detecta en tiempo de '
+        'ejecución y apaga el modo de segundo plano si falta, en vez de medir nada en '
+        'silencio. Ver Ubicacion.sePuedeEnSegundoPlano y el README.',
+        fuente: 'android/src/main/AndroidManifest.xml de este paquete',
+      ),
     ],
     dataSafety: 'Location → Precise location (en segundo plano)',
     manifiestoApple: 'NSPrivacyCollectedDataTypes → Location',
     razonApple: 'NSLocationAlwaysAndWhenInUseUsageDescription',
     retencion: Retencion.noSeGuarda,
+    base: BaseLegal.consentimiento,
+  ),
+
+  // ── LOS DOS QUE VIAJAN CON EL SEGUNDO PLANO Y QUE NADIE ESPERA ──────────────────
+  //
+  // 🔴 SE AGREGAN EL 2026-09-05, Y NO POR PROLIJIDAD. Sin ficha, el muro los marca «sin
+  // ficha en el catálogo» y **falla** en la aplicación del comercio que siguió al pie de la
+  // letra lo que dice el README sobre la ubicación en segundo plano. Un muro que da rojo por
+  // seguir la documentación propia se apaga, y con él se apaga la comprobación que de verdad
+  // importa.
+  //
+  // No los pide el SDK: los necesita `geolocator` para sostener las lecturas con la
+  // aplicación en el fondo, y su manifiesto declara el SERVICIO pero no los PERMISOS.
+
+  PermisoDeclarado(
+    nombre: 'android.permission.FOREGROUND_SERVICE',
+    plataforma: Plataforma.android,
+    modulo: 'ubicacion',
+    paraQue:
+        'Sostener la lectura de ubicación con la aplicación en el fondo, con un aviso fijo.',
+    nivel: Nivel.ninguno,
+    loAporta: 'la aplicación anfitriona',
+    disponibilidad: Disponibilidad.libreParaTodos(
+        'No accede a ningún dato por sí mismo: sólo permite que un servicio siga corriendo '
+        'con la aplicación en el fondo, y obliga a mostrar un aviso permanente. Quien decide '
+        'el veredicto es el permiso de ubicación que lo acompaña, no éste.'),
+    requisitos: [
+      Requisito(
+        'Sólo tiene sentido junto a ACCESS_BACKGROUND_LOCATION. Declararlo solo no habilita '
+        'nada y agrega un renglón a la ficha de la tienda sin motivo.',
+        fuente: 'developer.android.com/develop/background-work/services/fgs',
+      ),
+    ],
+    dataSafety: 'no se declara: no es un dato',
+    retencion: Retencion.mientrasExista,
+    base: BaseLegal.consentimiento,
+  ),
+
+  PermisoDeclarado(
+    nombre: 'android.permission.FOREGROUND_SERVICE_LOCATION',
+    plataforma: Plataforma.android,
+    modulo: 'ubicacion',
+    paraQue:
+        'Declarar que el servicio en primer plano es de ubicación, obligatorio en Android 14.',
+    nivel: Nivel.ninguno,
+    loAporta: 'la aplicación anfitriona',
+    disponibilidad: Disponibilidad.libreParaTodos(
+        'No accede a ningún dato: es la etiqueta de tipo del servicio. El veredicto lo pone '
+        'ACCESS_BACKGROUND_LOCATION, que es el que Google revisa a mano.'),
+    requisitos: [
+      Requisito(
+        '🔴 Obligatorio si la aplicación apunta a Android 14 (API 34) o más. Sin él, el '
+        'sistema TUMBA la aplicación al arrancar el servicio de ubicación — no la degrada, '
+        'la mata, con una SecurityException.',
+        fuente: 'developer.android.com/about/versions/14/changes/fgs-types-required',
+      ),
+      Requisito(
+        'Además del permiso, el <service> tiene que llevar foregroundServiceType="location". '
+        'El manifiesto de geolocator ya lo declara; el permiso NO, y por eso va acá.',
+        fuente: 'developer.android.com/about/versions/14/changes/fgs-types-required',
+      ),
+    ],
+    dataSafety: 'no se declara: no es un dato',
+    retencion: Retencion.mientrasExista,
     base: BaseLegal.consentimiento,
   ),
 

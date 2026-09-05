@@ -35,14 +35,41 @@ class ModuloDeUbicacion extends Modulo {
   @override
   String get nombre => 'ubicacion';
 
+  /// 🔴 LA CADENCIA DEPENDE DEL MODO QUE ELIGIÓ EL COMERCIO, no del módulo.
+  ///
+  /// El mismo módulo mide una vez por sesión o mide todo el día según lo que diga la
+  /// consola. Declarar `periodica` fijo haría que el catálogo le mostrara a un comercio con
+  /// segundo plano prendido una cadencia que no es la suya — y la cadencia es la mitad de lo
+  /// que decide cuánto cuesta en batería y en tráfico.
   @override
-  int get nivel => Nivel.permisoSimple;
+  Cadencia get cadencia => switch (_politica().modo) {
+        ModoDeLectura.alEntrar => Cadencia.periodica,
+        ModoDeLectura.enPrimerPlano => Cadencia.periodica,
+        ModoDeLectura.enSegundoPlano => Cadencia.continua,
+      };
 
+  /// 🔴 Y LOS PERMISOS TAMBIÉN. Se declaran **para poder decirlos**, no para pedirlos: es lo
+  /// que le permite a la consola mostrar en gris lo que el APK no trae, y armarle al comercio
+  /// la lista exacta de renglones que tiene que agregar a SU manifiesto antes de que el modo
+  /// de segundo plano pueda andar. Ver `Ubicacion.sePuedeEnSegundoPlano`.
   @override
-  Cadencia get cadencia => Cadencia.periodica;
+  List<String> get permisos => switch (_politica().modo) {
+        ModoDeLectura.enSegundoPlano => const [
+            'android.permission.ACCESS_COARSE_LOCATION',
+            'android.permission.ACCESS_BACKGROUND_LOCATION',
+            'android.permission.FOREGROUND_SERVICE',
+            'android.permission.FOREGROUND_SERVICE_LOCATION',
+          ],
+        _ => const ['android.permission.ACCESS_COARSE_LOCATION'],
+      };
 
+  /// El nivel también: el segundo plano es el único trámite de este SDK que Google revisa a
+  /// mano, con formulario y video. Decir «permiso simple» de eso sería mentirle al comercio
+  /// sobre lo que le va a costar publicar.
   @override
-  List<String> get permisos => const ['android.permission.ACCESS_COARSE_LOCATION'];
+  int get nivel => _politica().modo == ModoDeLectura.enSegundoPlano
+      ? Nivel.revisionDeGoogle
+      : Nivel.permisoSimple;
 
   /// 🔴 NO SE PIDE EN EL ARRANQUE. NUNCA.
   ///

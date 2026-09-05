@@ -52,12 +52,44 @@ public class SenalesPlugin: NSObject, FlutterPlugin {
     switch call.method {
     case "medir":
       result(medir())
+    case "puedeSegundoPlano":
+      result(puedeSegundoPlano())
     default:
       result(FlutterMethodNotImplemented)
     }
   }
 
   // ══════════════════════════════════════════════════════════════════════════════════════
+
+  /// ¿LA APLICACIÓN ANFITRIONA DECLARÓ LO QUE HACE FALTA PARA LEER LA UBICACIÓN CON LA
+  /// APLICACIÓN EN EL FONDO?
+  ///
+  /// 🔴 En iOS no hay un permiso en un manifiesto: hay dos renglones en el `Info.plist`, y
+  /// si falta cualquiera de los dos, CoreLocation **no entrega nada en el fondo y no tira
+  /// ningún error**. Ése es el fallo silencioso que esto existe para no tener.
+  ///
+  ///  · `NSLocationAlwaysAndWhenInUseUsageDescription` — el texto que Apple le muestra a la
+  ///    persona al pedir el «Siempre». Sin él, `requestAlwaysAuthorization` no hace nada.
+  ///  · `UIBackgroundModes` con `location` — sin esto, iOS suspende la app y las
+  ///    actualizaciones se cortan al salir de la pantalla.
+  ///
+  /// Sólo lee el propio `Info.plist` de la aplicación. No pide nada y no toca datos de nadie.
+  private func puedeSegundoPlano() -> [String: Any] {
+    let info = Bundle.main.infoDictionary ?? [:]
+    var faltan: [String] = []
+
+    let texto = info["NSLocationAlwaysAndWhenInUseUsageDescription"] as? String
+    if (texto ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      faltan.append("Info.plist → NSLocationAlwaysAndWhenInUseUsageDescription")
+    }
+
+    let modos = info["UIBackgroundModes"] as? [String] ?? []
+    if !modos.contains("location") {
+      faltan.append("Info.plist → UIBackgroundModes con «location»")
+    }
+
+    return ["sePuede": faltan.isEmpty, "faltan": faltan]
+  }
 
   private func medir() -> [String: Any] {
     var m: [String: Any] = [:]

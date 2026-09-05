@@ -12,6 +12,40 @@
       día hace falta un permiso de verdad, lo declara la APLICACIÓN anfitriona, nunca acá.
     -->
     <!--
+      ═══════════════════════════════════════════════════════════════════════════════════
+      🔴 UBICACIÓN EN SEGUNDO PLANO — EL PERMISO QUE ESTE ARCHIVO NO VA A DECLARAR NUNCA
+      ═══════════════════════════════════════════════════════════════════════════════════
+
+      Desde el 2026-09-05 el SDK SABE leer la ubicación con la aplicación en el fondo
+      (`ModoDeLectura.enSegundoPlano`). Para eso hacen falta TRES renglones:
+
+          <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+          <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+          <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+
+      NO VAN ACÁ. Van en el manifiesto de la APLICACIÓN que embebe el SDK, y sólo si esa
+      aplicación de verdad los necesita. Antes de copiarlos a algún lado, esto:
+
+      · Un permiso escrito en este archivo se le inyecta a TODA aplicación que instale el
+        paquete, la use o no. Declararlo acá se lo impondría también a los comercios de
+        crédito.
+
+      · 🔴 La POLÍTICA DE PRÉSTAMOS PERSONALES de Google Play PROHÍBE la ubicación en
+        segundo plano. No pide un formulario: saca la aplicación de la tienda. Un comercio
+        de préstamos que herede este permiso por haber instalado el SDK se entera cuando le
+        rechazan la subida — o cuando le bajan la app publicada.
+
+      · Y para el que SÍ puede: `ACCESS_BACKGROUND_LOCATION` es nivel 3, el único trámite de
+        todo este catálogo que Google revisa A MANO. Formulario de Declaración de Permisos,
+        video de 30 segundos mostrando la función, semanas de revisión y ninguna apelación
+        documentada. Los cuatro requisitos con su fuente están en la ficha del permiso, en
+        `lib/src/permisologia/catalogo_de_permisos.dart`.
+
+      Qué hace el SDK si NO están declarados: apaga el modo de segundo plano, escribe por
+      qué en el diagnóstico y sigue leyendo como siempre. NUNCA mide en silencio — ver
+      `Ubicacion.sePuedeEnSegundoPlano` y el README, sección «Ubicación continua».
+    -->
+    <!--
       PRUEBA DE CONCEPTO (2026-09-01): detección de PRESENCIA de apps, para el mapa de
       "canales alcanzables". Esto NO es un permiso — es <queries>, la forma que Google Play
       SÍ permite de preguntar por paquetes PUNTUALES sin `QUERY_ALL_PACKAGES` (que sí saca de

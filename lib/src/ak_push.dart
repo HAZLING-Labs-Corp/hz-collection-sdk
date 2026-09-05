@@ -572,6 +572,65 @@ class AkPush {
   /// La política que configuró el comercio para la ubicación.
   static PoliticaDeUbicacion get politicaDeUbicacion => _yo._politicaDeUbicacion;
 
+  // ── Lectura continua ─────────────────────────────────────────────────────
+  //
+  // 🔴 LOS TRES MODOS SON TRES COSAS DISTINTAS. Ver [ModoDeLectura] antes de tocar nada:
+  // uno no pide permiso, otro tampoco, y el tercero exige permisos que **este paquete no
+  // declara** y que sacan de Google Play a una financiera que los declare.
+
+  /// Qué está corriendo AHORA. **No es lo que el comercio pidió**: si pidió segundo plano y
+  /// la aplicación no declaró el permiso, acá dice [ModoDeLectura.alEntrar] y
+  /// [porQueNoHayLecturaContinua] dice por qué.
+  static ModoDeLectura get modoDeUbicacion => _yo._ubicacion.modoActivo;
+
+  /// Lo que el comercio pidió, aunque no se haya podido.
+  static ModoDeLectura get modoDeUbicacionPedido => _yo._ubicacion.modoPedido;
+
+  /// Por qué el modo pedido no está corriendo. `null` = está corriendo.
+  static String? get porQueNoHayLecturaContinua =>
+      _yo._ubicacion.modoActivo == _yo._ubicacion.modoPedido
+          ? null
+          : _yo._ubicacion.ultimoMotivo;
+
+  /// ¿LA APLICACIÓN ANFITRIONA DECLARÓ LO QUE HACE FALTA PARA EL SEGUNDO PLANO?
+  ///
+  /// 🔴 Si devuelve `false`, el modo de segundo plano **no va a andar por más que el
+  /// comercio lo prenda en la consola**, y lo que falta está en [faltaDeclararParaElFondo].
+  /// Se declara en el manifiesto de la APLICACIÓN, nunca en el del SDK: ver el README.
+  static Future<bool> get sePuedeUbicacionEnSegundoPlano =>
+      _yo._ubicacion.sePuedeEnSegundoPlano;
+
+  /// Qué renglones le faltan al manifiesto de la aplicación. Sólo tiene valor después de
+  /// consultar [sePuedeUbicacionEnSegundoPlano].
+  static List<String> get faltaDeclararParaElFondo => _yo._ubicacion.faltaDeclarar;
+
+  /// ¿La persona dio el «Permitir siempre»? Es OTRO permiso que el de la zona.
+  static Future<bool> get tieneUbicacionSiempre => _yo._ubicacion.tieneSiempre;
+
+  /// CUÁNTAS LECTURAS DEJÓ ESTA SESIÓN, y cuántas de ellas salieron hacia el servicio.
+  ///
+  /// Existe para poder **medir** el efecto de un modo en vez de creerlo. `enviadas` es
+  /// siempre menor o igual: una lectura que llega antes del intervalo se descarta acá y
+  /// nunca toca la red.
+  static ({int leidas, int enviadas}) get lecturasDeUbicacionDeLaSesion => (
+        leidas: _yo._ubicacion.lecturasDeLaSesion,
+        enviadas: _yo._ubicacion.enviosDeLaSesion,
+      );
+
+  /// Corta la lectura continua y vuelve al modo de siempre. La aplicación puede llamarla
+  /// cuando quiera —una pantalla de «pausar el seguimiento», por ejemplo—; el SDK la llama
+  /// sola al cerrar sesión.
+  static Future<void> detenerLecturaContinua() =>
+      _yo._ubicacion.detenerContinuo();
+
+  /// LE OFRECE EL «SIEMPRE», CON LA SEGUNDA HOJA. Devuelve si quedó concedido.
+  ///
+  /// El SDK la llama solo al iniciar sesión cuando el comercio puso el modo en
+  /// [ModoDeLectura.enSegundoPlano]. Esta versión pública es para el comercio que prefiera
+  /// pedirlo en su propio momento.
+  static Future<bool> ofrecerUbicacionSiempre([BuildContext? context]) =>
+      _yo._ofrecerSiempre(context: context, forzar: true);
+
   /// LE OFRECE A LA PERSONA COMPARTIR SU ZONA, CON EL MODAL DEL SDK.
   ///
   /// Explica primero —con los textos que escribió el comercio— y recién si dice que
@@ -714,6 +773,142 @@ class AkPush {
       // Nunca tumba nada: perder una ubicación cuesta un dato de segmentación; que
       // falle el inicio de sesión cuesta que esa persona no reciba nada.
       return false;
+    }
+  }
+
+  /// LA SEGUNDA PREGUNTA — «SIEMPRE» — CON SU PROPIA HOJA Y SU PROPIO RELOJ.
+  ///
+  /// ══ 🔴 POR QUÉ NO SE PIDE JUNTO CON LA PRIMERA ══
+  ///
+  /// Porque no se puede. Desde Android 11 el sistema **no muestra** el diálogo de «permitir
+  /// siempre» a una aplicación que no tenga ya el de «mientras se usa», y aun teniéndolo, lo
+  /// que abre es la pantalla de Ajustes para que la persona lo elija a mano. iOS 13+ obliga
+  /// a la misma secuencia. Pedir los dos juntos no es una mala práctica: es una pantalla que
+  /// no aparece.
+  ///
+  /// Y aunque se pudiera, no se haría: son dos preguntas de tamaño distinto. «Mi zona
+  /// mientras uso la aplicación» y «mi zona todo el día» no se contestan igual, y meterlas
+  /// en un solo modal es la forma de conseguir un sí que la persona no dio.
+  ///
+  /// `forzar` distingue las dos entradas, igual que en [_ofrecerUbicacion]: la automática
+  /// respeta el reloj de reinsistencia, la que pide la aplicación no.
+  Future<bool> _ofrecerSiempre({
+    BuildContext? context,
+    required bool forzar,
+  }) async {
+    try {
+      if (await _ubicacion.tieneSiempre) return true;
+
+      // 🔴 EL ORDEN NO ES NEGOCIABLE. Sin el permiso de uso, esto no muestra nada.
+      if (!await _ubicacion.concedido) return false;
+
+      // Y si la aplicación no lo declaró, la hoja sería una promesa que el sistema no puede
+      // cumplir: la persona acepta, se abren los Ajustes, y la opción «Permitir siempre»
+      // sencillamente no está ahí.
+      if (!await _ubicacion.sePuedeEnSegundoPlano) {
+        assert(() {
+          debugPrint(
+            '[collection] No se ofrece el «siempre»: la aplicación no declaró '
+            '${_ubicacion.faltaDeclarar.join(", ")}. Se declara en el manifiesto de la '
+            'APLICACIÓN, no en el del SDK. Ver el README, «Ubicación continua».',
+          );
+          return true;
+        }());
+        return false;
+      }
+
+      if (!forzar) {
+        final desde = await _almacen.desdeLaUltimaOfertaDeSiempre();
+        if (desde != null &&
+            desde.inDays < _politicaDeUbicacion.reintentarCadaDias) {
+          return false;
+        }
+      }
+
+      // Se anota antes de mostrar, por lo mismo que la primera oferta: si la persona mata la
+      // aplicación con la hoja abierta, no se le vuelve a aparecer en cada arranque.
+      await _almacen.guardarOfertaDeSiempre(DateTime.now());
+
+      final ctx = context ?? navegador.currentContext;
+      if (ctx == null || !ctx.mounted) {
+        assert(() {
+          debugPrint(
+            '[collection] El comercio pidió ubicación en segundo plano, pero el SDK no '
+            'tiene dónde dibujar la segunda hoja. Agregá «navigatorKey: AkPush.navegador» '
+            'a tu MaterialApp, o llamá a AkPush.ofrecerUbicacionSiempre(context) vos mismo.',
+          );
+          return true;
+        }());
+        return false;
+      }
+
+      final textos = _politicaDeUbicacion.textosDeSiempre;
+      final quiere = await ModalDeUbicacion.mostrarSiempre(ctx, textos: textos);
+
+      // Categoría propia: «aceptó la zona» y «aceptó que la midan todo el día» son dos
+      // consentimientos distintos y no pueden quedar guardados como el mismo. Si mañana
+      // alguien reclama, lo que hay que poder mostrar es qué texto tuvo delante para CADA
+      // uno.
+      final queLeyo = '${textos.titulo}\n${textos.cuerpo}';
+      await _anotarConsentimiento(
+        categoria: 'ubicacion_siempre',
+        concedido: quiere,
+        textoMostrado: queLeyo,
+      );
+      if (!quiere) return false;
+
+      final concedido = await _ubicacion.pedirSiempre();
+      if (!concedido) {
+        // Aceptó la hoja y después no eligió «Permitir siempre» en los Ajustes. Cuenta como
+        // un «no»: el consentimiento vale por lo que terminó pasando.
+        await _anotarConsentimiento(
+          categoria: 'ubicacion_siempre',
+          concedido: false,
+          textoMostrado: queLeyo,
+        );
+      }
+      return concedido;
+    } catch (_) {
+      // Nunca tumba nada, por lo mismo que todo lo demás de este módulo.
+      return false;
+    }
+  }
+
+  /// PRENDE EL MODO DE LECTURA QUE ELIGIÓ EL COMERCIO.
+  ///
+  /// 🔴 SI NO SE PUEDE, SE APAGA Y QUEDA ESCRITO POR QUÉ. Ver
+  /// [Ubicacion.arrancarContinuo]: el motivo va a [Ubicacion.ultimoMotivo] y sale en el
+  /// diagnóstico. El fallo que hay que evitar acá es el comercio que prende «segundo plano»,
+  /// ve el interruptor en verde, espera quince días y no tiene ni una lectura.
+  Future<void> _arrancarLecturaContinua(String userId) async {
+    try {
+      final p = _politicaDeUbicacion;
+      if (!p.activa || p.modo == ModoDeLectura.alEntrar) {
+        await _ubicacion.detenerContinuo();
+        return;
+      }
+
+      // La zona primero, siempre. Sin ella no hay nada que leer en ningún modo.
+      if (!await _ubicacion.concedido) {
+        _ubicacion.modoPedido = p.modo;
+        return;
+      }
+
+      // Y para el fondo, la segunda pregunta. Va acá y no adentro de `arrancarContinuo`
+      // porque pedir un permiso es dibujar una pantalla, y `Ubicacion` no dibuja.
+      if (p.modo == ModoDeLectura.enSegundoPlano &&
+          !await _ubicacion.tieneSiempre) {
+        await _ofrecerSiempre(forzar: false);
+      }
+
+      await _ubicacion.arrancarContinuo(
+        userId: userId,
+        modo: p.modo,
+        cada: p.cada,
+        textos: p.textosDeSiempre,
+      );
+    } catch (_) {
+      // Ninguna lectura vale romperle el inicio de sesión a nadie.
     }
   }
 
@@ -1566,6 +1761,17 @@ class AkPush {
     // de las llamadas devuelve `false` sin tocar el GPS.
     unawaited(_ubicacion.reportarSiCorresponde(userId));
 
+    // 🔴 Y SI EL COMERCIO PIDIÓ LECTURA CONTINUA, SE PRENDE ACÁ.
+    //
+    // Después de la oferta de la zona y no antes: los dos modos continuos necesitan el
+    // permiso de uso concedido, y el de fondo necesita además la segunda pregunta, que no se
+    // puede hacer sin la primera. Encolarlo antes sería arrancar un flujo que el sistema
+    // corta en la primera lectura.
+    //
+    // Sin esperar, como todo lo de este bloque: el inicio de sesión no se cuelga detrás de
+    // un modal ni de un servicio que levanta.
+    unawaited(_arrancarLecturaContinua(userId));
+
     return ResultadoDeSesion(
       puedeRecibir: concedido && _token != null && _registrado,
       estadoDelPermiso: estado,
@@ -1688,6 +1894,13 @@ class AkPush {
     _userId = null;
     _registrado = false;
     _registradoEl = null;
+
+    // 🔴 SE CORTA LA LECTURA CONTINUA, Y ESTO NO ES UNA LIMPIEZA COSMÉTICA. Un flujo que
+    // sobrevive al cierre de sesión sigue mandando posiciones con el identificador de quien
+    // ya se fue —o del siguiente que entre—, y en segundo plano lo hace con un aviso fijo en
+    // la barra de alguien que cerró la aplicación. Es el peor final posible de este módulo.
+    await _ubicacion.detenerContinuo();
+
     // Lo que se anote desde ahora es de la instalación y de nadie más. Lo ya encolado
     // conserva el sujeto que tenía: pertenece a quien lo hizo, no a quien entre después.
     _comportamiento.salioElSujeto();
@@ -1742,6 +1955,14 @@ class AkPush {
                   servicioPrendido: await _ubicacion.servicioPrendido,
                   ultimoEnvio: _ubicacion.ultimoEnvio,
                   ultimoMotivo: _ubicacion.ultimoMotivo,
+                  // 🔴 Los dos modos y lo que falta declarar. Sin esto, un comercio con el
+                  // segundo plano apagado por un renglón que le falta al manifiesto se ve en
+                  // el diagnóstico exactamente igual que uno que nunca lo pidió.
+                  modoPedido: _ubicacion.modoPedido.name,
+                  modoActivo: _ubicacion.modoActivo.name,
+                  faltaDeclarar: _ubicacion.faltaDeclarar,
+                  lecturasDeLaSesion: _ubicacion.lecturasDeLaSesion,
+                  enviosDeLaSesion: _ubicacion.enviosDeLaSesion,
                 )
               : null);
 

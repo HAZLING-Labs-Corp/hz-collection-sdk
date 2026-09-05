@@ -5,6 +5,7 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.net.ConnectivityManager
@@ -89,6 +90,7 @@ class SenalesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     override fun onMethodCall(call: MethodCall, resultado: MethodChannel.Result) {
         when (call.method) {
             "medir" -> resultado.success(medir())
+            "puedeSegundoPlano" -> resultado.success(puedeSegundoPlano())
             else -> resultado.notImplemented()
         }
     }
@@ -103,6 +105,60 @@ class SenalesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         putAll(huellaDigital())
         putAll(canalesAlcanzables())
         putAll(entregabilidad())
+    }
+
+    /**
+     * ¿LA APLICACIÓN ANFITRIONA DECLARÓ LO QUE HACE FALTA PARA LEER LA UBICACIÓN EN SEGUNDO
+     * PLANO?
+     *
+     * 🔴 NO PIDE NADA Y NO LEE NADA DE LA PERSONA. Lee el manifiesto FUSIONADO de la propia
+     * aplicación —`PackageManager.GET_PERMISSIONS`, API pública, sin permiso— y contesta qué
+     * falta. Es la única forma honesta de que el SDK sepa si puede usar un permiso que
+     * **él no declara y no va a declarar**: declararlo acá se lo inyectaría a toda
+     * aplicación que instale el paquete, y para una financiera eso es el camino corto a que
+     * Google le saque la app de Play.
+     *
+     * Sin esto, un comercio prende «segundo plano» en su consola, ve el interruptor en
+     * verde, espera quince días y no mide nada. Con esto, el modo se apaga solo y dice
+     * exactamente qué renglón le falta al manifiesto.
+     *
+     * Los tres que se miran, y por qué:
+     *
+     *  · `ACCESS_BACKGROUND_LOCATION` — el permiso en sí. Desde Android 10.
+     *  · `FOREGROUND_SERVICE` — `geolocator` levanta un servicio en primer plano para
+     *    sostener las lecturas; su manifiesto declara el servicio, **no el permiso**.
+     *  · `FOREGROUND_SERVICE_LOCATION` — desde Android 14 un servicio de tipo `location`
+     *    exige además este permiso, y sin él el sistema **tira la aplicación abajo** al
+     *    arrancar el servicio. Sólo se exige si la aplicación apunta a 34 o más: a una que
+     *    apunte a 33 pedírselo sería marcar en rojo algo que anda.
+     */
+    private fun puedeSegundoPlano(): Map<String, Any?> {
+        val declarados: Set<String> = intentar {
+            @Suppress("DEPRECATION")
+            contexto.packageManager
+                .getPackageInfo(contexto.packageName, PackageManager.GET_PERMISSIONS)
+                .requestedPermissions
+                ?.toSet()
+        } ?: emptySet()
+
+        val faltan = mutableListOf<String>()
+        if (!declarados.contains("android.permission.ACCESS_BACKGROUND_LOCATION")) {
+            faltan.add("android.permission.ACCESS_BACKGROUND_LOCATION")
+        }
+        if (!declarados.contains("android.permission.FOREGROUND_SERVICE")) {
+            faltan.add("android.permission.FOREGROUND_SERVICE")
+        }
+        val apuntaA34 = intentar { contexto.applicationInfo.targetSdkVersion } ?: 0
+        if (Build.VERSION.SDK_INT >= 34 && apuntaA34 >= 34 &&
+            !declarados.contains("android.permission.FOREGROUND_SERVICE_LOCATION")
+        ) {
+            faltan.add("android.permission.FOREGROUND_SERVICE_LOCATION")
+        }
+
+        return mapOf(
+            "sePuede" to faltan.isEmpty(),
+            "faltan" to faltan,
+        )
     }
 
     /** Corre una lectura y se traga el fallo. Lo que no se pudo leer no aparece. */

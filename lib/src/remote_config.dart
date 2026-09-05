@@ -215,6 +215,14 @@ class ConfigStore {
   /// compartir la fecha haría que uno tapara al otro durante semanas.
   static const _claveAvisoServicio = 'akpush.avisoServicioUbicacion';
 
+  /// La SEGUNDA oferta —la de «siempre»— lleva su propia fecha, y no comparte la de arriba.
+  ///
+  /// 🔴 Compartirla haría que una tape a la otra: quien acaba de aceptar la zona tiene la
+  /// fecha de hoy anotada, así que la oferta de «siempre» no saldría hasta dentro de dos
+  /// semanas — justo cuando la persona ya se olvidó de qué es esta aplicación. Son dos
+  /// preguntas distintas con dos relojes distintos.
+  static const _claveOfertaSiempre = 'akpush.ofertaUbicacionSiempre';
+
   Future<AkPushConfig?> leer() async {
     final prefs = await SharedPreferences.getInstance();
     final crudo = prefs.getString(_claveConfig);
@@ -286,6 +294,18 @@ class ConfigStore {
   Future<Duration?> desdeLaUltimaOfertaDeUbicacion() async {
     final crudo =
         (await SharedPreferences.getInstance()).getString(_claveOfertaUbicacion);
+    final cuando = crudo == null ? null : DateTime.tryParse(crudo);
+    return cuando == null ? null : DateTime.now().difference(cuando);
+  }
+
+  Future<void> guardarOfertaDeSiempre(DateTime cuando) async =>
+      (await SharedPreferences.getInstance())
+          .setString(_claveOfertaSiempre, cuando.toIso8601String());
+
+  /// Cuánto pasó desde que se le ofreció el «siempre». `null` = nunca.
+  Future<Duration?> desdeLaUltimaOfertaDeSiempre() async {
+    final crudo =
+        (await SharedPreferences.getInstance()).getString(_claveOfertaSiempre);
     final cuando = crudo == null ? null : DateTime.tryParse(crudo);
     return cuando == null ? null : DateTime.now().difference(cuando);
   }

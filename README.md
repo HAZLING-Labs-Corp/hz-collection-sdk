@@ -1065,3 +1065,142 @@ await AkPush.reportarUbicacion();   // lee y manda, con freno de 6 horas
 
 Se piden **la zona, no la puerta**, se guardan las últimas 5 posiciones y se descartan a los
 90 días.
+
+---
+
+## Ubicación continua: los tres modos
+
+Desde el 2026-09-05 el comercio elige, desde su consola, **cómo** se lee la ubicación. No es
+«más o menos seguido» de lo mismo: son tres mecanismos distintos, con tres permisos distintos
+y tres costos distintos.
+
+| Modo | Qué hace | Qué permiso exige | Qué pasa si falta |
+|---|---|---|---|
+| `alEntrar` **(por omisión)** | Una lectura cuando la persona abre la app, con freno de 2 h | `ACCESS_COARSE_LOCATION` | No lee nada; `AkPush.reportarUbicacion()` devuelve `false` y el diagnóstico dice por qué |
+| `enPrimerPlano` | Lecturas cada 2 min **mientras la app está abierta**. Se corta sola al irse al fondo | **Ninguno nuevo.** El mismo `ACCESS_COARSE_LOCATION` | Igual que arriba |
+| `enSegundoPlano` | Lecturas cada 30 min **con la app en el fondo**. Aviso fijo en la barra | `ACCESS_BACKGROUND_LOCATION` **+** `FOREGROUND_SERVICE` **+** `FOREGROUND_SERVICE_LOCATION` (Android 14+) | 🔴 **El modo se apaga solo**, escribe por qué en el diagnóstico y sigue leyendo como `alEntrar`. Nunca mide en silencio |
+
+Nadie cambia de comportamiento por actualizar el paquete: si el comercio no configura nada,
+el modo es `alEntrar` y todo funciona como antes.
+
+### 🔴 El SDK NO declara el permiso de segundo plano, y no lo va a declarar
+
+Un permiso escrito en el manifiesto de un paquete se le inyecta a **toda** aplicación que lo
+instale, la use o no. Si `hz_collection_sdk` declarara `ACCESS_BACKGROUND_LOCATION`, se lo
+impondría también a los comercios de crédito — y **la política de préstamos personales de
+Google Play lo prohíbe**. Es de las que sacan la app de la tienda, no de las que piden un
+formulario. Es exactamente el error que se le midió a CredoLab, cuyos paquetes le meten
+`READ_CONTACTS` y `READ_CALENDAR` a cualquiera.
+
+Entonces: **lo declara la aplicación que embebe el SDK**, y el SDK lo usa **sólo si está
+declarado y sólo si el comercio activó el modo**. Una app de préstamos simplemente no lo
+declara y el código se comporta como siempre. `bin/muro.dart` lo comprueba en cada
+compilación:
+
+```bash
+dart run hz_collection_sdk:muro --rubro=prestamoPersonal
+```
+
+### Si tu aplicación SÍ lo necesita: lo que agregás vos
+
+Antes de copiar esto, leé la línea siguiente entera. **Estás aceptando** llenar el Formulario
+de Declaración de Permisos en Play Console, grabar un video de 30 segundos mostrando la
+función, y una revisión manual de Google que se rechaza seguido y que no tiene apelación
+documentada. Los cuatro requisitos, con su fuente, están en la ficha de
+`ACCESS_BACKGROUND_LOCATION` en `lib/src/permisologia/catalogo_de_permisos.dart`.
+
+En `android/app/src/main/AndroidManifest.xml`:
+
+```xml
+<!-- La zona. Este ya lo tenías. -->
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
+<!-- 🔴 Los tres de abajo son SÓLO para el modo `enSegundoPlano`.
+     Si tu rubro es préstamo personal o adelanto de sueldo, NO los pongas:
+     Google Play los veta y te saca la aplicación de la tienda. -->
+<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+```
+
+En iPhone, en `ios/Runner/Info.plist`:
+
+```xml
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>Para saber en qué zona estás incluso cuando la aplicación está cerrada.</string>
+<key>UIBackgroundModes</key>
+<array><string>location</string></array>
+```
+
+Sin cualquiera de esos renglones, CoreLocation **no entrega nada en el fondo y no tira ningún
+error**. El SDK los comprueba y te lo dice.
+
+### Cómo saber si quedó andando
+
+```dart
+// ¿La aplicación declaró lo que hace falta?
+if (!await AkPush.sePuedeUbicacionEnSegundoPlano) {
+  print('Falta declarar: ${AkPush.faltaDeclararParaElFondo}');
+}
+
+AkPush.modoDeUbicacionPedido;          // lo que pidió el comercio
+AkPush.modoDeUbicacion;                // lo que de verdad está corriendo
+AkPush.porQueNoHayLecturaContinua;     // null si están corriendo el mismo
+AkPush.lecturasDeUbicacionDeLaSesion;  // (leidas: 8, enviadas: 3)
+
+await AkPush.detenerLecturaContinua(); // cortarlo desde tu propia pantalla
+```
+
+`AkPush.diagnostico()` muestra lo mismo en una línea, y marca el eslabón de ubicación en
+**ROTO** cuando el modo pedido no arrancó.
+
+### 🔴 Dos cosas que este modo NO hace, y hay que saberlas antes de venderlo
+
+**1 · No sobrevive a que barran la aplicación.** Mientras la actividad viva —la persona apretó
+inicio, apagó la pantalla, está en otra app— las lecturas siguen llegando. Si la barre de las
+recientes, o si el fabricante la mata por batería (Honor, Xiaomi y Huawei lo hacen agresivamente),
+se cortan hasta que la vuelva a abrir. Sostener eso necesitaría un servicio con su propio
+isolate, y ese paquete le inyectaría permisos a **toda** aplicación que instale el SDK: es el
+mismo muro de arriba.
+
+**2 · Los quince días no entran en el servicio, todavía.** El back guarda las últimas **60**
+posiciones por aparato. A 30 minutos son 48 por día, así que esas 60 cubren **25 horas**: un
+día entero, que es la pregunta «cuánto se mueve en el día». Para quince días harían falta 720
+huecos, o que el servicio agregue por día. **Eso se arregla del lado del servicio, no del SDK**
+— bajar la frecuencia para que entren quince días la dejaría en una lectura cada seis horas,
+que es el freno que se acaba de sacar por inútil.
+
+### Cuánto cambia, medido
+
+Medido el 2026-09-05 contra el código real, con el reloj comprimido (un teléfono Honor no
+estaba conectado, así que esto **no** es una medición en hardware). El día simulado son 11
+horas con tres sesiones de 3 minutos —alguien que abre la aplicación tres veces en una
+mañana y después la deja en el bolsillo—:
+
+| Modo | Posiciones enviadas en ese día |
+|---|---|
+| `alEntrar` (lo de hoy) | **1** |
+| `enPrimerPlano`, 2 min | **6** |
+| `enSegundoPlano`, 30 min | **22** |
+
+El 1 no es un error de la medición: el freno de 2 horas es exactamente eso. La segunda y la
+tercera sesión de la mañana caen dentro de la ventana de la primera y no dejan marca. Una sola
+posición no distingue a quien se quedó en su casa de quien cruzó la ciudad — que es toda la
+razón por la que existen los otros dos modos.
+
+### La frecuencia
+
+Configurable por comercio, en la política de ubicación:
+
+| Campo | Por omisión | Piso |
+|---|---|---|
+| `cadaMinutosEnPrimerPlano` | 2 min | 1 min |
+| `cadaMinutosEnSegundoPlano` | **30 min** | 5 min |
+
+**Por qué 30 minutos.** Tres razones y las tres tiran igual: *(a)* Android limita por su cuenta
+a una lectura por hora a las apps en el fondo sin servicio en primer plano, así que 30 min es
+el doble de lo que el sistema considera razonable y lo máximo defendible como «conservador»;
+*(b)* con 60 huecos en el servicio, 30 min cubren exactamente un día; *(c)* hay un aviso fijo
+en la barra de la persona todo el día, y cuanto menos se le caliente el teléfono, más dura el
+permiso. Se lee con `LocationAccuracy.low` —antenas y wifi, **sin GPS**— y con el *wake lock*
+apagado, así que el teléfono duerme entre lecturas.

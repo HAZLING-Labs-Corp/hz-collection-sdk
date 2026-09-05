@@ -401,6 +401,16 @@ class _PantallaState extends State<Pantalla> {
           // sucursales, digamos, que es cuando más gente acepta— pone el momento en
           // «laAppDecide» desde la consola y llama a `AkPush.ofrecerUbicacion(context)`
           // donde quiera.
+          // ── QUÉ MODO DE UBICACIÓN QUEDÓ ANDANDO ────────────────────────
+          //
+          // 🔴 Está a la vista y no escondido en el diagnóstico porque el fallo que
+          // esta línea existe para mostrar no se parece a un error: el comercio prende
+          // «segundo plano» en su consola, no pasa nada, y sin esto no hay forma de
+          // enterarse de que a la aplicación le falta un renglón en su manifiesto.
+          if (AkPush.modoDeUbicacionPedido != ModoDeLectura.alEntrar) ...[
+            const SizedBox(height: 16),
+            _LineaDeUbicacion(),
+          ],
           const SizedBox(height: 20),
           Text('Bitácora', style: t.textTheme.labelMedium),
           const Divider(),
@@ -510,6 +520,60 @@ class _SelectorState extends State<_Selector> {
               },
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// UNA LÍNEA QUE DICE SI LA LECTURA CONTINUA DE UBICACIÓN QUEDÓ ANDANDO.
+///
+/// Lo que importa que se lea es la diferencia entre lo que el comercio PIDIÓ y lo que está
+/// corriendo. Si son distintos, el motivo va debajo: casi siempre es un permiso que la
+/// aplicación tiene que declarar en su propio manifiesto y no declaró.
+class _LineaDeUbicacion extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final pedido = AkPush.modoDeUbicacionPedido;
+    final activo = AkPush.modoDeUbicacion;
+    final anda = pedido == activo;
+    final n = AkPush.lecturasDeUbicacionDeLaSesion;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: (anda ? t.colorScheme.primary : t.colorScheme.error)
+            .withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(anda ? Icons.my_location : Icons.location_disabled,
+                size: 18,
+                color: anda ? t.colorScheme.primary : t.colorScheme.error),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                anda
+                    ? 'Ubicación · modo ${activo.name} · ${n.leidas} leídas / '
+                        '${n.enviadas} enviadas'
+                    : 'Ubicación · pidió ${pedido.name} y corre ${activo.name}',
+                style: t.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: anda ? null : t.colorScheme.error,
+                ),
+              ),
+            ),
+          ]),
+          if (!anda && AkPush.porQueNoHayLecturaContinua != null) ...[
+            const SizedBox(height: 6),
+            Text(AkPush.porQueNoHayLecturaContinua!,
+                style: t.textTheme.bodySmall
+                    ?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+          ],
         ],
       ),
     );
