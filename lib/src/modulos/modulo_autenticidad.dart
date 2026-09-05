@@ -44,6 +44,10 @@ class ModuloDeAutenticidad extends Modulo {
   DateTime? _ultimaVez;
   String? _ultimoMotivo;
 
+  /// Qué pasó con la última medición aunque no haya sido un problema. Ver el mismo campo
+  /// en `ModuloDeSenales`.
+  String? _ultimoDetalle;
+
   @override
   String get nombre => 'autenticidad';
 
@@ -60,22 +64,17 @@ class ModuloDeAutenticidad extends Modulo {
 
   @override
   Future<void> alEntrar(Contexto c) async {
-    final id = c.sujetoId;
-    if (id == null) return;
+    if (c.sujetoId == null) return;
     try {
+      // Es el módulo donde la política más se nota y menos se discute: un aparato no deja
+      // de ser un emulador entre una sesión y la siguiente. Cinco booleanos que no cambian
+      // nunca no tienen por qué viajar en cada inicio de sesión — y cuando alguno cambie,
+      // que es justo la señal antifraude, viajan los cinco.
       final medido = await medir();
-      if (medido.isEmpty) {
-        _ultimoMotivo = 'el sistema no devolvió ninguna medición';
-        return;
-      }
-      await c.api.reportarSenales(
-        sujetoId: id,
-        instalacionId: c.instalacionId,
-        modulo: nombre,
-        senales: medido,
-      );
-      _ultimaVez = DateTime.now();
-      _ultimoMotivo = null;
+      final r = await enviarMedicion(c, nombre, medido);
+      if (r.midio) _ultimaVez = DateTime.now();
+      _ultimoDetalle = r.detalle;
+      _ultimoMotivo = r.problema;
     } catch (e) {
       // Igual que los demás módulos: nunca tumba nada. Perder esta medición cuesta una señal
       // antifraude; que falle el inicio de sesión cuesta que esa persona no reciba nada.
@@ -88,7 +87,8 @@ class ModuloDeAutenticidad extends Modulo {
         andando: _ultimoMotivo == null,
         detalle: _ultimaVez == null
             ? 'todavía no midió'
-            : 'midió hace ${DateTime.now().difference(_ultimaVez!).inMinutes} min',
+            : 'midió hace ${DateTime.now().difference(_ultimaVez!).inMinutes} min'
+                '${_ultimoDetalle != null ? " · $_ultimoDetalle" : ""}',
         ultimoMotivo: _ultimoMotivo,
         ultimaVez: _ultimaVez,
       );

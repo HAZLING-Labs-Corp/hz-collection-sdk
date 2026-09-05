@@ -35,6 +35,10 @@ class ModuloDeAparato extends Modulo {
   DateTime? _ultimaVez;
   String? _ultimoMotivo;
 
+  /// Qué pasó con la última medición aunque no haya sido un problema. Ver el mismo campo
+  /// en `ModuloDeSenales`.
+  String? _ultimoDetalle;
+
   @override
   String get nombre => 'aparato';
 
@@ -51,17 +55,23 @@ class ModuloDeAparato extends Modulo {
 
   @override
   Future<void> alEntrar(Contexto c) async {
-    final id = c.sujetoId;
-    if (id == null) return;
+    if (c.sujetoId == null) return;
     try {
+      // 🔴 EL MÓDULO DEL PULSO ES EL QUE MÁS CUIDADO PIDE CON LA POLÍTICA. De sus seis
+      // campos, cuatro se mueven en cada apertura por definición —el nivel de batería, si
+      // está cargando, el espacio libre—. Si contaran como cambio, este módulo transmitiría
+      // siempre y la política valdría para dos de tres. Están declarados como momentos en
+      // `momentosDelAparato`; los que sí disparan un envío son el tipo de red, el sistema y
+      // el espacio total, que son estados de verdad.
+      //
+      // 🔴 Y va con `modulo: nombre` ahora, que antes se omitía y caía en el valor por
+      // omisión `aparato`. Es el mismo nombre, así que del otro lado no cambia nada — pero
+      // sin declararlo, el portero no tenía cómo saber de qué módulo era la medición.
       final medido = await _medir();
-      if (medido.isEmpty) {
-        _ultimoMotivo = 'el sistema no devolvió ninguna medición';
-        return;
-      }
-      await c.api.reportarSenales(sujetoId: id, instalacionId: c.instalacionId, senales: medido);
-      _ultimaVez = DateTime.now();
-      _ultimoMotivo = null;
+      final r = await enviarMedicion(c, nombre, medido);
+      if (r.midio) _ultimaVez = DateTime.now();
+      _ultimoDetalle = r.detalle;
+      _ultimoMotivo = r.problema;
     } catch (e) {
       // Nunca tumba nada: perder una medición cuesta un dato de segmentación; que falle el
       // inicio de sesión cuesta que esa persona no reciba nada. El motivo queda para el
@@ -113,7 +123,8 @@ class ModuloDeAparato extends Modulo {
         andando: _ultimoMotivo == null,
         detalle: _ultimaVez == null
             ? 'todavía no midió'
-            : 'midió hace ${DateTime.now().difference(_ultimaVez!).inMinutes} min',
+            : 'midió hace ${DateTime.now().difference(_ultimaVez!).inMinutes} min'
+                '${_ultimoDetalle != null ? " · $_ultimoDetalle" : ""}',
         ultimoMotivo: _ultimoMotivo,
         ultimaVez: _ultimaVez,
       );

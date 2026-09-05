@@ -4,6 +4,7 @@ import 'package:hz_collection_sdk/hz_collection_sdk.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 
+import 'la_solicitud.dart';
 import 'lo_recolectado.dart';
 import 'personas_de_prueba.dart';
 
@@ -76,7 +77,7 @@ class Pantalla extends StatefulWidget {
 class _PantallaState extends State<Pantalla> {
   final List<String> _bitacora = [];
 
-  /// Qué pestaña se está mirando: 0 sesión · 1 datos · 2 ubicación.
+  /// Qué pestaña se está mirando: 0 sesión · 1 datos · 2 ubicación · 3 solicitud.
   int _vista = 0;
   String _estado = 'iniciando…';
   String? _token;
@@ -299,12 +300,21 @@ class _PantallaState extends State<Pantalla> {
             icon: Icon(Icons.place_outlined),
             selectedIcon: Icon(Icons.place),
             label: 'Ubicación'),
+          // 🔴 «Solicitud» es la pestaña donde se prueba el comportamiento, y tiene que
+          // estar en la pantalla y no en una prueba: el tiempo de llenado, el abandono y
+          // el «pegó o escribió» sólo existen si hay dedos sobre un formulario de verdad.
+          NavigationDestination(
+            icon: Icon(Icons.assignment_outlined),
+            selectedIcon: Icon(Icons.assignment),
+            label: 'Solicitud'),
         ],
       ),
       body: _vista == 1
           ? const LoRecolectado()
           : _vista == 2
               ? const DondeEstuvo()
+              : _vista == 3
+              ? const LaSolicitud()
               : ListView(
         padding: const EdgeInsets.all(16),
         children: [

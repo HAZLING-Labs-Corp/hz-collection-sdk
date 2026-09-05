@@ -64,6 +64,10 @@ class ModuloDeSenales extends Modulo {
   DateTime? _ultimaVez;
   String? _ultimoMotivo;
 
+  /// Qué pasó con la última medición, aunque no haya sido un problema: «no se transmitió:
+  /// nada cambió» es información, y sin este campo se veía igual que no haber medido.
+  String? _ultimoDetalle;
+
   @override
   String get nombre => 'senales';
 
@@ -80,32 +84,19 @@ class ModuloDeSenales extends Modulo {
 
   @override
   Future<void> alEntrar(Contexto c) async {
-    final id = c.sujetoId;
-    if (id == null) return;
+    if (c.sujetoId == null) return;
     try {
+      // 🔴 SE MIDE SIEMPRE Y SE TRANSMITE SI CAMBIÓ ALGO — las dos cosas son distintas.
+      //
+      // Medir es local y cuesta milisegundos; transmitir levanta la radio del teléfono. De
+      // las 105 señales, diez cambian en cada medición —la hora local, el voltaje de la
+      // batería— así que sin la política, «mandá lo que cambió» manda siempre todo. Quien
+      // decide es `enviarMedicion`; acá sólo se mide y se anota qué contestó.
       final medido = await medir();
-      if (medido.isEmpty) {
-        _ultimoMotivo = 'el sistema no devolvió ninguna medición';
-        return;
-      }
-      final descartadoPorQue = await c.api.reportarSenales(
-        sujetoId: id,
-        instalacionId: c.instalacionId,
-        modulo: nombre,
-        senales: medido,
-      );
-
-      // 🔴 UN 200 NO ES UN «SE GUARDÓ». El servicio acepta y descarta cuando el comercio
-      // tiene el módulo apagado, y lo dice en el cuerpo. Hasta hoy eso se ignoraba, así que
-      // el diagnóstico afirmaba que había medido bien mientras del otro lado no quedaba
-      // nada. Se anota el motivo y NO se marca la última medición como buena.
-      if (descartadoPorQue != null) {
-        _ultimoMotivo = 'el servicio no lo guardó: $descartadoPorQue';
-        return;
-      }
-
-      _ultimaVez = DateTime.now();
-      _ultimoMotivo = null;
+      final r = await enviarMedicion(c, nombre, medido);
+      if (r.midio) _ultimaVez = DateTime.now();
+      _ultimoDetalle = r.detalle;
+      _ultimoMotivo = r.problema;
     } catch (e) {
       // Nunca tumba nada. Perder estas señales cuesta poder de un puntaje; que falle el
       // inicio de sesión cuesta que esa persona no reciba nada.
@@ -118,7 +109,8 @@ class ModuloDeSenales extends Modulo {
         andando: _ultimoMotivo == null,
         detalle: _ultimaVez == null
             ? 'todavía no midió'
-            : 'midió hace ${DateTime.now().difference(_ultimaVez!).inMinutes} min',
+            : 'midió hace ${DateTime.now().difference(_ultimaVez!).inMinutes} min'
+                '${_ultimoDetalle != null ? " · $_ultimoDetalle" : ""}',
         ultimoMotivo: _ultimoMotivo,
         ultimaVez: _ultimaVez,
       );
