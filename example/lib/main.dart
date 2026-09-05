@@ -9,8 +9,16 @@ import 'personas_de_prueba.dart';
 
 /// El `10.0.2.2` es cómo un emulador de Android alcanza el localhost de la
 /// máquina que lo hospeda.
+///
+/// 🔴 EL PUERTO POR OMISIÓN ES 3085 — el back de Collection (`hz-collection-tiers-back`),
+/// que es el único que tiene la ruta `POST /api/v1/ubicacion`. Antes apuntaba a 3096, que
+/// es `ak-push-back` —el repo viejo, abandonado— donde esa ruta no existe: un `flutter run`
+/// sin `--dart-define` mandaba las coordenadas a un back que contesta 404, y como
+/// `reportarUbicacion` se traga el error, no se veía nada. La app quedaba «midiendo bien y
+/// sin enviar» por apuntar al servidor equivocado. El README ya documenta 3085; esto lo
+/// hace coincidir con el default.
 const _llave = String.fromEnvironment('AKPUSH_KEY', defaultValue: 'pk_demo.local');
-const _url = String.fromEnvironment('AKPUSH_URL', defaultValue: 'http://10.0.2.2:3096');
+const _url = String.fromEnvironment('AKPUSH_URL', defaultValue: 'http://10.0.2.2:3085/api/v1');
 
 /// 🔴 ESTO NO VA EN UNA APLICACIÓN DE VERDAD. NUNCA.
 ///
@@ -312,9 +320,16 @@ class _PantallaState extends State<Pantalla> {
                     const SizedBox(height: 10),
                     Text(_dentro!.nombre,
                         style: t.textTheme.titleMedium),
+                    // 🔴 CADA COSA CON SU ROTULO. Al poner el identificador acá quedó
+                    // pegado al rótulo «cédula» que ya estaba: la ficha decía
+                    // «cédula 676dc59e8cc125da8f90e289», que es el uuid, mientras la
+                    // cédula de verdad —17229393— salía en el renglón de abajo sin
+                    // rótulo. Dos identificadores distintos con el nombre del otro, en la
+                    // pantalla que se mira para saber con quién se entró.
                     Text(
+                        'identificador ${_dentro!.userId}\n'
                         '${_dentro!.tipo == TipoDeSujeto.juridica ? "RIF" : "cédula"} '
-                        '${_dentro!.userId}\n${_dentro!.cedula} · ${_dentro!.estado}',
+                        '${_dentro!.cedula} · ${_dentro!.estado}',
                         style: t.textTheme.bodySmall),
                     // Sólo aparece para los empleados de proveedor del juego de
                     // prueba: es lo que demuestra que el sujeto PERTENECE a la
@@ -452,7 +467,7 @@ class _SelectorState extends State<_Selector> {
             child: TextField(
               autofocus: true,
               decoration: const InputDecoration(
-                labelText: 'Buscar por nombre, cédula o usuario',
+                labelText: 'Buscar por nombre, cédula o identificador',
                 prefixIcon: Icon(Icons.search),
                 border: OutlineInputBorder(),
               ),
@@ -478,7 +493,8 @@ class _SelectorState extends State<_Selector> {
                   title: Text('${p.nombre}$marca'),
                   // El identificador primero: es la clave con la que esta persona
                   // existe en notificaciones, y es lo que hay que poder leer al elegirla.
-                  subtitle: Text('${p.userId}\n${p.cedula} · ${p.estado}'),
+                  subtitle: Text('identificador ${p.userId}\n'
+                      'cédula ${p.cedula} · ${p.estado}'),
                   onTap: () => Navigator.pop(c, p),
                 );
               },
