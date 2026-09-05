@@ -234,14 +234,40 @@ class SenalesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             ?: return@buildMap
         val todos = intentar { sm.getSensorList(Sensor.TYPE_ALL) } ?: return@buildMap
 
+        /**
+         * 🔴 NO ALCANZA CON `getSensorList(TYPE_ALL)` — corregido el 2026-09-05.
+         *
+         * Juan lo vio en su propio teléfono: un Honor con giroscopio, y la señal decía que
+         * no lo tenía. Y no era un detalle cosmético — `sen_hay_giroscopio` en falso le sumó
+         * **+10 puntos al portón de fraude**, sobre un teléfono real y sano.
+         *
+         * `getSensorList(TYPE_ALL)` NO devuelve todos los sensores: deja afuera los de
+         * despertar y, sobre todo, **los fabricantes filtran esa lista**. Huawei y Honor son
+         * los casos conocidos. La forma documentada de preguntar «¿este aparato tiene tal
+         * sensor?» es `getDefaultSensor(tipo)`, que resuelve contra el HAL y no contra una
+         * lista que el fabricante armó.
+         *
+         * Se consultan las dos y se toma el O lógico: si CUALQUIERA de los dos caminos lo
+         * ve, el sensor existe. Un falso negativo acá le cuesta puntos a una persona real;
+         * un falso positivo sólo le quita puntos a un emulador, que ya cae por otras diez
+         * señales. La duda se resuelve para el lado de no castigar a nadie.
+         */
+        fun hay(tipo: Int): Boolean =
+            (intentar { sm.getDefaultSensor(tipo) } != null) || todos.any { it.type == tipo }
+
         put("sen_cantidad", todos.size)
-        put("sen_hay_acelerometro", todos.any { it.type == Sensor.TYPE_ACCELEROMETER })
-        put("sen_hay_giroscopio", todos.any { it.type == Sensor.TYPE_GYROSCOPE })
-        put("sen_hay_magnetometro", todos.any { it.type == Sensor.TYPE_MAGNETIC_FIELD })
-        put("sen_hay_proximidad", todos.any { it.type == Sensor.TYPE_PROXIMITY })
-        put("sen_hay_luz", todos.any { it.type == Sensor.TYPE_LIGHT })
-        put("sen_hay_barometro", todos.any { it.type == Sensor.TYPE_PRESSURE })
-        put("sen_hay_paso", todos.any { it.type == Sensor.TYPE_STEP_COUNTER })
+        put("sen_hay_acelerometro", hay(Sensor.TYPE_ACCELEROMETER))
+        /**
+         * El giroscopio además admite una variante SIN CALIBRAR (`TYPE_GYROSCOPE_UNCALIBRATED`),
+         * y hay aparatos que exponen sólo ésa. Para la pregunta que importa —«¿este teléfono
+         * puede saber que lo giraron?»— las dos sirven igual.
+         */
+        put("sen_hay_giroscopio", hay(Sensor.TYPE_GYROSCOPE) || hay(Sensor.TYPE_GYROSCOPE_UNCALIBRATED))
+        put("sen_hay_magnetometro", hay(Sensor.TYPE_MAGNETIC_FIELD) || hay(Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED))
+        put("sen_hay_proximidad", hay(Sensor.TYPE_PROXIMITY))
+        put("sen_hay_luz", hay(Sensor.TYPE_LIGHT))
+        put("sen_hay_barometro", hay(Sensor.TYPE_PRESSURE))
+        put("sen_hay_paso", hay(Sensor.TYPE_STEP_COUNTER))
         // Cuántos dicen ser del fabricante genérico de Android: en un teléfono real casi
         // ninguno; en un emulador, todos.
         put("sen_genericos", todos.count {
