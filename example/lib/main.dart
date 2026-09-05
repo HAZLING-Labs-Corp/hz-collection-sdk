@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'la_solicitud.dart';
 import 'lo_recolectado.dart';
-import 'personas_de_prueba.dart';
+import 'nucleo.dart';
 
 /// El `10.0.2.2` es cómo un emulador de Android alcanza el localhost de la
 /// máquina que lo hospeda.
@@ -81,7 +81,7 @@ class _PantallaState extends State<Pantalla> {
   int _vista = 0;
   String _estado = 'iniciando…';
   String? _token;
-  PersonaDePrueba? _dentro;
+  PersonaDelNucleo? _dentro;
   ResultadoDeSesion? _sesion;
 
   @override
@@ -120,11 +120,11 @@ class _PantallaState extends State<Pantalla> {
     }
   }
 
-  Future<void> _entrar(PersonaDePrueba p) async {
+  Future<void> _entrar(PersonaDelNucleo p) async {
     _anotar('entrando como ${p.nombre} · ${p.cedula}');
     try {
       final r = await AkPush.alIniciarSesion(
-        userId: p.userId,
+        userId: p.uuid,
         // Es una empresa, o una persona natural — para las dos empresas del
         // juego de prueba esto sale en `TipoDeSujeto.juridica`.
         tipo: p.tipo,
@@ -136,7 +136,7 @@ class _PantallaState extends State<Pantalla> {
         // La organización a la que pertenece, si tiene una — los dos empleados de
         // proveedor del juego de prueba la traen puesta.
         organizacion: p.organizacion,
-        identityHash: _firmarComoLoHariaElBackend(p.userId),
+        identityHash: _firmarComoLoHariaElBackend(p.uuid),
         // 🔴 LO QUE EL COMERCIO SABE DE ESTA PERSONA, y que el servicio no puede
         // inventar. Sin esto la consola muestra `u_9000` y nada más: no se puede
         // buscar a nadie por su nombre, ni segmentar un envío por sucursal o por plan.
@@ -229,10 +229,10 @@ class _PantallaState extends State<Pantalla> {
   }
 
   Future<void> _elegirPersona() async {
-    final p = await showModalBottomSheet<PersonaDePrueba>(
+    final p = await showModalBottomSheet<PersonaDelNucleo>(
       context: context,
       isScrollControlled: true,
-      builder: (c) => _Selector(),
+      builder: (c) => _Entrada(),
     );
     if (p != null) await _entrar(p);
   }
@@ -337,7 +337,7 @@ class _PantallaState extends State<Pantalla> {
                     // rótulo. Dos identificadores distintos con el nombre del otro, en la
                     // pantalla que se mira para saber con quién se entró.
                     Text(
-                        'identificador ${_dentro!.userId}\n'
+                        'identificador ${_dentro!.uuid}\n'
                         '${_dentro!.tipo == TipoDeSujeto.juridica ? "RIF" : "cédula"} '
                         '${_dentro!.cedula} · ${_dentro!.estado}',
                         style: t.textTheme.bodySmall),
@@ -430,96 +430,221 @@ class _PantallaState extends State<Pantalla> {
   }
 }
 
-/// Las cien, con búsqueda. Es lo que demuestra el modelo de identidad: se busca
-/// por nombre —un atributo— y se entra por `userId`.
-class _Selector extends StatefulWidget {
+/// ═══════════════════════════════════════════════════════════════════════════
+/// LA PUERTA — usuario y clave contra el núcleo del comercio
+/// ═══════════════════════════════════════════════════════════════════════════
+///
+/// 🔴 QUÉ CAMBIÓ, Y POR QUÉ · 2026-09-05
+///
+/// Acá había un selector que listaba `cienPersonas`, una constante compilada
+/// dentro del APK. Se tocaba un nombre y se entraba: **sin clave**. Dos
+/// problemas, y ninguno es de estilo:
+///
+/// 1. Para corregir una cédula, agregar una empresa o arreglar un correo había
+///    que **recompilar y volver a repartir el APK**. El juego de prueba era
+///    intocable, que es lo contrario de un juego de prueba.
+/// 2. Elegir de una lista no es entrar. Un sistema de verdad pide usuario y
+///    clave, y la app de prueba tiene que probar ese camino, no uno inventado.
+///
+/// Ahora las personas viven en `hz-mundototal-core`, el sistema de origen del
+/// comercio. La app **no guarda copia**: si el núcleo no contesta, esta pantalla
+/// dice qué ruta falta en vez de fingir que tiene gente.
+///
+/// El directorio aparece **después** de entrar, porque el núcleo lo protege: el
+/// elenco son personas con cédula, ciudad y correo, y un directorio abierto es
+/// una cartera publicada.
+class _Entrada extends StatefulWidget {
   @override
-  State<_Selector> createState() => _SelectorState();
+  State<_Entrada> createState() => _EntradaState();
 }
 
-class _SelectorState extends State<_Selector> {
-  String _texto = '';
+class _EntradaState extends State<_Entrada> {
+  final _usuario = TextEditingController();
+  final _clave = TextEditingController();
+  final _busqueda = TextEditingController();
 
-  /// ═══════════════════════════════════════════════════════════════════════
-  /// 🔴 SÓLO LAS CIEN — pedido de Juan, 2026-09-04
-  /// ═══════════════════════════════════════════════════════════════════════
-  ///
-  /// > *«Borrá todos los usuarios de la app de Collection y agregá los usuarios
-  /// > en base a la información del Excel con los cien usuarios.»*
-  ///
-  /// Acá se juntaban `casosDeIdentidadDePrueba` —dos empresas con RIF y dos
-  /// empleados de un proveedor— **y encima iban al principio**, así que al abrir
-  /// el selector lo primero que se veía eran cuatro personas que **no existen en
-  /// la cartera de prueba**: `empresa1`, `empresa2`, `empleado1`, `empleado2`.
-  ///
-  /// Y no es un detalle de orden. Esos cuatro no están en notificaciones, así que
-  /// entrar con uno de ellos y mandarle un push da exactamente el resultado que
-  /// hay que poder distinguir de un defecto: **el envío sale, el otro lado
-  /// contesta bien, y no le llega a nadie** — porque esa persona no existe del
-  /// otro lado. Probar la integración con ellos delante es garantizar una hora
-  /// buscando un problema que no está en el código.
-  ///
-  /// Los cuatro casos siguen declarados en `personas_de_prueba.dart` y se pueden
-  /// volver a enchufar cuando haga falta probar RIF y organización. Lo que no
-  /// pueden es estar en el selector de una prueba de integración.
-  static const _todas = cienPersonas;
+  String? _error;
+  bool _entrando = false;
+
+  List<PersonaDelNucleo>? _directorio;
+  bool _cargandoDirectorio = false;
+  String? _errorDirectorio;
+
+  @override
+  void initState() {
+    super.initState();
+    // Si ya se entró antes en esta corrida, hay sesión y el directorio se puede
+    // mirar de una.
+    if (Nucleo.token != null) _traerDirectorio();
+  }
+
+  @override
+  void dispose() {
+    _usuario.dispose();
+    _clave.dispose();
+    _busqueda.dispose();
+    super.dispose();
+  }
+
+  Future<void> _traerDirectorio() async {
+    setState(() { _cargandoDirectorio = true; _errorDirectorio = null; });
+    try {
+      final gente = await Nucleo.directorio(busqueda: _busqueda.text.trim());
+      if (!mounted) return;
+      setState(() { _directorio = gente; _cargandoDirectorio = false; });
+    } on ErrorDelNucleo catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorDirectorio = e.toString();
+        _cargandoDirectorio = false;
+        _directorio = null;
+      });
+    }
+  }
+
+  Future<void> _entrar() async {
+    setState(() { _entrando = true; _error = null; });
+    try {
+      final p = await Nucleo.entrar(_usuario.text.trim(), _clave.text);
+      if (!mounted) return;
+      Navigator.pop(context, p);
+    } on ErrorDelNucleo catch (e) {
+      if (!mounted) return;
+      setState(() { _error = e.toString(); _entrando = false; });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Se busca por las tres vías a la vez y se juntan sin repetir: por nombre
-    // —que es un atributo—, por cédula/RIF —que es un alias— y por usuario.
-    final lista = _texto.isEmpty
-        ? _todas
-        : <PersonaDePrueba>{
-            ..._todas.where((p) => p.nombre.toLowerCase().contains(_texto.toLowerCase())),
-            ..._todas.where((p) => p.cedula == _texto),
-            // 🔴 Se busca por el IDENTIFICADOR, que es el dato del comercio.
-            ..._todas.where((p) => p.userId.contains(_texto)),
-          }.toList();
+    final t = Theme.of(context);
 
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.8,
-      builder: (c, scroll) => Column(
+      initialChildSize: 0.85,
+      builder: (c, scroll) => ListView(
+        controller: scroll,
+        padding: const EdgeInsets.all(16),
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: TextField(
-              autofocus: true,
+          Text('Entrar', style: t.textTheme.titleLarge),
+          const SizedBox(height: 4),
+          Text('Las personas viven en el núcleo del comercio, no dentro de esta '
+              'aplicación.\n$nucleoUrl',
+              style: t.textTheme.bodySmall),
+          const SizedBox(height: 16),
+
+          TextField(
+            controller: _usuario,
+            autofocus: true,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              labelText: 'Usuario',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _clave,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'Clave',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _entrando ? null : _entrar(),
+          ),
+
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: t.colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(_error!,
+                  style: t.textTheme.bodySmall
+                      ?.copyWith(color: t.colorScheme.onErrorContainer)),
+            ),
+          ],
+
+          const SizedBox(height: 14),
+          FilledButton(
+            onPressed: _entrando ? null : _entrar,
+            child: Text(_entrando ? 'Entrando…' : 'Entrar'),
+          ),
+
+          const SizedBox(height: 8),
+          Text('La semilla del núcleo trae usuario1 … usuario100, con clave '
+              'admin123.', style: t.textTheme.bodySmall),
+
+          const Divider(height: 32),
+
+          Row(
+            children: [
+              Expanded(child: Text('El directorio', style: t.textTheme.titleMedium)),
+              if (Nucleo.token != null)
+                IconButton(
+                  onPressed: _cargandoDirectorio ? null : _traerDirectorio,
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Volver a traer',
+                ),
+            ],
+          ),
+
+          if (Nucleo.token == null)
+            Text('Se ve después de entrar: el núcleo lo protege con sesión, '
+                'porque es la cartera del comercio.',
+                style: t.textTheme.bodySmall)
+          else ...[
+            TextField(
+              controller: _busqueda,
               decoration: const InputDecoration(
-                labelText: 'Buscar por nombre, cédula o identificador',
+                labelText: 'Buscar por nombre, cédula, ciudad o estado',
                 prefixIcon: Icon(Icons.search),
                 border: OutlineInputBorder(),
+                isDense: true,
               ),
-              onChanged: (v) => setState(() => _texto = v),
+              onSubmitted: (_) => _traerDirectorio(),
             ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              controller: scroll,
-              itemCount: lista.length,
-              itemBuilder: (c, i) {
-                final p = lista[i];
-                // Los cuatro casos de identidad se marcan acá para poder
-                // encontrarlos de un vistazo entre las cien: RIF para las
-                // empresas, y la organización para los empleados de proveedor.
-                final marca = p.tipo == TipoDeSujeto.juridica
-                    ? ' · RIF ${p.cedula}'
-                    : p.organizacion != null
-                        ? ' · ${p.organizacion!.nombre ?? p.organizacion!.codigo}'
-                        : '';
-                return ListTile(
-                  dense: true,
-                  title: Text('${p.nombre}$marca'),
-                  // El identificador primero: es la clave con la que esta persona
-                  // existe en notificaciones, y es lo que hay que poder leer al elegirla.
-                  subtitle: Text('identificador ${p.userId}\n'
-                      'cédula ${p.cedula} · ${p.estado}'),
-                  onTap: () => Navigator.pop(c, p),
-                );
-              },
-            ),
-          ),
+            const SizedBox(height: 8),
+            if (_cargandoDirectorio)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_errorDirectorio != null)
+              // Nombra la ruta que falta en vez de romperse.
+              Text(_errorDirectorio!,
+                  style: t.textTheme.bodySmall
+                      ?.copyWith(color: t.colorScheme.error))
+            else if (_directorio != null)
+              ...[
+                Text('${_directorio!.length} personas',
+                    style: t.textTheme.bodySmall),
+                for (final p in _directorio!)
+                  ListTile(
+                    dense: true,
+                    // Las empresas se marcan con RIF y los empleados con su
+                    // organización: son los casos que hay que poder distinguir
+                    // de un vistazo entre las cien.
+                    title: Text(p.tipo == TipoDeSujeto.juridica
+                        ? '${p.nombre} · RIF ${p.cedula}'
+                        : p.organizacion != null
+                            ? '${p.nombre} · ${p.organizacion!.nombre ?? p.organizacion!.codigo}'
+                            : p.nombre),
+                    subtitle: Text('identificador ${p.uuid}\n'
+                        'cédula ${p.cedula} · ${p.estado} · usuario ${p.usuario}'),
+                    // Tocar NO entra: completa el usuario. Entrar necesita la
+                    // clave, igual que en un sistema de verdad.
+                    onTap: () {
+                      _usuario.text = p.usuario;
+                      FocusScope.of(context).unfocus();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Usuario ${p.usuario} · falta la clave')),
+                      );
+                    },
+                  ),
+              ],
+          ],
         ],
       ),
     );
