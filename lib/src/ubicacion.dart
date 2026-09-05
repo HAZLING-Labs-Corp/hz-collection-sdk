@@ -38,10 +38,17 @@ class Ubicacion {
 
   final AkPushApi _api;
 
-  /// Cada cuánto se vuelve a leer. Seis horas: suficiente para saber en qué
-  /// ciudad está alguien, y poco suficiente para no aparecer en el uso de
-  /// batería del teléfono.
-  static const minimoEntreLecturas = Duration(hours: 6);
+  /// Cada cuánto se vuelve a leer.
+  ///
+  /// 🔴 **Eran seis horas y son dos, desde el 2026-09-05.** Seis alcanzaban para «en qué
+  /// ciudad está», que era el objetivo original. Dejaron de alcanzar cuando la pregunta pasó
+  /// a ser **cuánto se mueve**: con ese freno, alguien que abre la aplicación tres veces en
+  /// una mañana deja **una sola** lectura, y una lectura no distingue a quien se quedó en su
+  /// casa de quien cruzó la ciudad.
+  ///
+  /// No cuesta batería: se sigue leyendo **sólo cuando la persona abre la aplicación**, nunca
+  /// en segundo plano. Lo que cambia es cuántas de esas aperturas dejan marca.
+  static const minimoEntreLecturas = Duration(hours: 2);
 
   DateTime? _ultimaLectura;
 
