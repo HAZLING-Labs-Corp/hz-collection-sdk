@@ -30,5 +30,38 @@
         <package android:name="com.android.chrome" />
         <package android:name="com.google.android.youtube" />
         <package android:name="com.android.vending" />
+
+        <!--
+          ═══════════════════════════════════════════════════════════════════════════
+          APPS QUE HABLAN DE LA VIDA ECONÓMICA — agregadas el 2026-09-05
+          ═══════════════════════════════════════════════════════════════════════════
+
+          Pedido de Juan: *«no me preguntás si tiene WhatsApp… si tiene Google Maps,
+          qué tanto se mueve el teléfono»*. Las de arriba se declararon para saber por
+          dónde MANDARLE un mensaje; éstas son para saber algo de la persona.
+
+          🔴 Siguen sin ser un permiso. `<queries>` pregunta por paquetes PUNTUALES y es
+          lo que Google Play permite; `QUERY_ALL_PACKAGES` —ver la lista completa— exige
+          revisión manual y para una financiera es el camino corto a que la saquen.
+
+          ⚠️ Y una advertencia que vale más que la lista: **un nombre de paquete mal
+          escrito no falla, devuelve `false` para siempre**. La señal diría «no tiene
+          Mercado Pago» de todo el mundo y nadie se enteraría. Cada uno de éstos hay que
+          confirmarlo contra un teléfono real antes de darle peso en ningún modelo.
+        -->
+
+        <!-- Se mueve: tiene mapas y pide viajes. -->
+        <package android:name="com.google.android.apps.maps" />
+        <package android:name="com.ubercab" />
+
+        <!-- Compra y paga por internet: actividad económica declarada por sus propias apps. -->
+        <package android:name="com.mercadolibre" />
+        <package android:name="com.mercadopago.wallet" />
+        <package android:name="com.binance.dev" />
+        <package android:name="com.zellepay.zelle" />
+
+        <!-- Paga suscripciones todos los meses: capacidad de pago recurrente sostenida. -->
+        <package android:name="com.netflix.mediaclient" />
+        <package android:name="com.spotify.music" />
     </queries>
 </manifest>

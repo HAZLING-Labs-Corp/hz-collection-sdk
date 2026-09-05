@@ -84,6 +84,12 @@ const List<GrupoDeSenales> gruposDeSenales = [
       'Qué apps de contacto tiene instaladas —WhatsApp, Telegram, redes—, para elegir por dónde '
       'mandarle. Sólo dice si están instaladas, NO si están activas ni qué hace en ellas. Es la '
       'lista puntual que Google Play permite, sin ver todas las apps del teléfono.'),
+  GrupoDeSenales('app_', 'Vida económica',
+      'Qué apps de dinero, compras, mapas y suscripciones tiene instaladas. Igual que los '
+      'canales, es la lista PUNTUAL que Google Play permite y sólo dice si están instaladas: '
+      'nunca qué hace en ellas ni cuánto las abre, que exigiría un permiso vetado. '
+      '🔴 Y la trampa: tener pocas apps no es riesgo de crédito, es pobreza. Sirven si '
+      'conservan poder predictivo controlando por nivel de ingreso; si no, se sacan.'),
   GrupoDeSenales('usr_', 'Perfil de usuario',
       'Si la aplicación corre en el usuario principal del teléfono o en un perfil secundario, '
       'y si el aparato está en modo demostración.'),
@@ -449,6 +455,49 @@ const List<CampoRecolectado> camposDeSenales = [
   CampoRecolectado('canal_gmail', Transformacion.taICual,
       queManda: 'si tiene Gmail instalado',
       paraQue: 'Alcance: canal de correo disponible en el teléfono.',
+      computada: true),
+
+  // ── Vida económica: qué apps tiene, sin pedir un permiso ──────────────────────────────
+  //
+  // Pedido de Juan, 2026-09-05: *«no me preguntás si tiene WhatsApp… si tiene Google Maps,
+  // qué tanto se mueve»*. Las de arriba existen para saber POR DÓNDE mandarle un mensaje;
+  // éstas, para saber algo de la persona.
+  //
+  // 🔴 Y la trampa del negocio, escrita acá para que no se olvide: tener un teléfono con
+  // pocas apps NO es riesgo de crédito, es pobreza. Estas señales sirven si conservan poder
+  // predictivo **controlando por nivel de ingreso**; si no lo conservan, se sacan aunque
+  // mejoren el número.
+  CampoRecolectado('app_mapas', Transformacion.taICual,
+      queManda: 'si tiene Google Maps instalado',
+      paraQue: 'Puntaje: se mueve y se orienta con el teléfono. Es la base de «cuánto se mueve».',
+      computada: true),
+  CampoRecolectado('app_viajes', Transformacion.taICual,
+      queManda: 'si tiene una app de viajes instalada',
+      paraQue: 'Puntaje: paga traslados desde el teléfono, con un medio de pago cargado.',
+      computada: true),
+  CampoRecolectado('app_mercadolibre', Transformacion.taICual,
+      queManda: 'si tiene Mercado Libre instalado',
+      paraQue: 'Puntaje: compra por internet, lo que supone una dirección y un medio de pago.',
+      computada: true),
+  CampoRecolectado('app_mercadopago', Transformacion.taICual,
+      queManda: 'si tiene Mercado Pago instalado',
+      paraQue: 'Puntaje: mueve dinero digital. Es la señal económica más directa de esta familia.',
+      computada: true),
+  CampoRecolectado('app_binance', Transformacion.taICual,
+      queManda: 'si tiene Binance instalado',
+      paraQue: 'Puntaje: en Venezuela es una forma corriente de tener y mover divisas.',
+      computada: true),
+  CampoRecolectado('app_zelle', Transformacion.taICual,
+      queManda: 'si tiene Zelle instalado',
+      paraQue: 'Puntaje: recibe o manda dinero en dólares, casi siempre desde el exterior.',
+      computada: true),
+  CampoRecolectado('app_netflix', Transformacion.taICual,
+      queManda: 'si tiene Netflix instalado',
+      paraQue: 'Puntaje: paga una suscripción todos los meses, que es capacidad de pago sostenida.',
+      computada: true),
+  CampoRecolectado('app_spotify', Transformacion.taICual,
+      queManda: 'si tiene Spotify instalado',
+      paraQue: 'Puntaje: otra suscripción mensual; sumada a la anterior, un hábito de pago recurrente.',
       computada: true),
 
   // ── Entregabilidad (¿el push va a llegar y lo va a ver?) ──────────────────────────────

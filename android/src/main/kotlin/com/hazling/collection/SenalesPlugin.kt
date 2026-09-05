@@ -457,7 +457,25 @@ class SenalesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "canal_instagram" to "com.instagram.android",
             "canal_signal" to "org.thoughtcrime.securesms",
             "canal_sms_rcs" to "com.google.android.apps.messaging",
-            "canal_gmail" to "com.google.android.gm"
+            "canal_gmail" to "com.google.android.gm",
+
+            // ── Vida económica — agregadas el 2026-09-05 ────────────────────────────
+            //
+            // Las de arriba dicen POR DÓNDE mandarle un mensaje. Éstas dicen algo de la
+            // persona, que es lo que un puntaje necesita.
+            //
+            // 🔴 Un nombre de paquete mal escrito NO falla: devuelve `false` para
+            // siempre. La señal diría «no tiene Mercado Pago» de toda la cartera y nadie
+            // se enteraría nunca. Antes de darle peso a cualquiera de éstas en un modelo,
+            // hay que verla en `true` en al menos un teléfono real que sí la tenga.
+            "app_mapas" to "com.google.android.apps.maps",
+            "app_viajes" to "com.ubercab",
+            "app_mercadolibre" to "com.mercadolibre",
+            "app_mercadopago" to "com.mercadopago.wallet",
+            "app_binance" to "com.binance.dev",
+            "app_zelle" to "com.zellepay.zelle",
+            "app_netflix" to "com.netflix.mediaclient",
+            "app_spotify" to "com.spotify.music"
         )
         val pm = contexto.packageManager
         for ((clave, paquete) in apps) {
