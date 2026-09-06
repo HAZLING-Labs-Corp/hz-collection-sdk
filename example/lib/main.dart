@@ -351,18 +351,45 @@ class _PantallaState extends State<Pantalla> {
                   ],
                   if (r != null) ...[
                     const SizedBox(height: 12),
-                    Row(children: [
-                      Icon(r.puedeRecibir ? Icons.check_circle : Icons.cancel,
-                          size: 18,
-                          color: r.puedeRecibir ? Colors.green.shade700 : Colors.orange.shade800),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(r.puedeRecibir ? 'Puede recibir' : 'No puede recibir',
-                            style: t.textTheme.titleSmall),
-                      ),
-                    ]),
-                    const SizedBox(height: 4),
-                    Text(r.motivo, style: t.textTheme.bodySmall),
+                    /*
+                      🔴 SE ESCUCHA `AkPush.avisos`, NO SE LEE `r.puedeRecibir`.
+
+                      `r` es la foto del instante en que se entró. Si después la persona
+                      activa los avisos desde la campanita —o los apaga desde los Ajustes
+                      del teléfono— esta tarjeta seguía diciendo «No puede recibir» sobre
+                      un teléfono que ya recibe. Lo vio Juan en su teléfono el 2026-09-05:
+                      activó el permiso y la tarjeta de afuera no se enteró.
+
+                      El SDK ya publica el estado en un `ValueListenable` y esta pantalla
+                      lo ignoraba: el dato estaba, faltaba escucharlo. Mientras todavía no
+                      publicó nada, vale la foto del inicio de sesión.
+                    */
+                    ValueListenableBuilder<EstadoDeAvisos?>(
+                      valueListenable: AkPush.avisos,
+                      builder: (c, avisos, _) {
+                        final puede = avisos?.puedeRecibir ?? r.puedeRecibir;
+                        final porQue = avisos?.explicacion ?? r.motivo;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              Icon(puede ? Icons.check_circle : Icons.cancel,
+                                  size: 18,
+                                  color: puede
+                                      ? Colors.green.shade700
+                                      : Colors.orange.shade800),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(puede ? 'Puede recibir' : 'No puede recibir',
+                                    style: t.textTheme.titleSmall),
+                              ),
+                            ]),
+                            const SizedBox(height: 4),
+                            Text(porQue, style: t.textTheme.bodySmall),
+                          ],
+                        );
+                      },
+                    ),
                   ],
                   const SizedBox(height: 12),
                   Text('Dirección de este teléfono', style: t.textTheme.labelMedium),

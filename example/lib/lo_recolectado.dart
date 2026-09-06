@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hz_collection_sdk/hz_collection_sdk.dart';
@@ -135,16 +136,48 @@ class DondeEstuvo extends StatefulWidget {
   State<DondeEstuvo> createState() => _DondeEstuvoState();
 }
 
-class _DondeEstuvoState extends State<DondeEstuvo> {
+class _DondeEstuvoState extends State<DondeEstuvo>
+    with WidgetsBindingObserver {
   Position? _pos;
   String? _motivo;
   bool _buscando = false;
   WebViewController? _mapa;
 
+  /// 🔴 EL TECHO QUE IMPIDE QUE ESTA PANTALLA SE QUEDE PEGADA.
+  ///
+  /// Reportado por Juan el 2026-09-05: dio el permiso, encendió el GPS, y la pantalla
+  /// «se queda pegada». Cualquiera de las cuatro llamadas de abajo —el permiso, el
+  /// interruptor del sistema, la última posición conocida, la lectura fresca— depende
+  /// de los servicios de Google, y en un teléfono donde alguno no contesta el `await`
+  /// no vuelve nunca: el spinner se queda girando sin nada que lo corte.
+  ///
+  /// Con esto, pase lo que pase hay una respuesta en pantalla antes de medio minuto.
+  static const _techo = Duration(seconds: 25);
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _mirar();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// 🔴 AL VOLVER DE LOS AJUSTES SE VUELVE A MIRAR.
+  ///
+  /// La otra mitad de lo que reportó Juan: dar el permiso o encender el GPS pasa
+  /// FUERA de la aplicación, y al volver esta pantalla seguía mostrando el estado
+  /// de antes —«sin permiso», o el mapa vacío— como si nada hubiera cambiado. Quien
+  /// acaba de encender la ubicación y ve lo mismo concluye que no sirvió.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState estado) {
+    if (estado == AppLifecycleState.resumed && !_buscando && _pos == null) {
+      _mirar();
+    }
   }
 
   /// Arma el mapa alrededor de un punto. Extraído para poder pintarlo con la última
@@ -165,6 +198,27 @@ class _DondeEstuvoState extends State<DondeEstuvo> {
   Future<void> _mirar() async {
     setState(() { _buscando = true; _motivo = null; });
     try {
+      await _buscar().timeout(_techo);
+    } on TimeoutException {
+      /* Si la última posición conocida ya pintó el mapa, el techo no es un fallo que
+         haya que contar: lo que venció fue la lectura fresca, y lo que se ve sirve. */
+      if (mounted && _pos == null) {
+        setState(() {
+          _buscando = false;
+          _motivo = 'el teléfono no contestó en ${_techo.inSeconds} segundos. '
+              'Suele pasar bajo techo o con los servicios de ubicación recién '
+              'encendidos: probá de nuevo cerca de una ventana.';
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _motivo = 'falló: $e'; _buscando = false; });
+    }
+  }
+
+  /// El trabajo de verdad. Va aparte para poder ponerle un techo entero arriba: si se
+  /// le pusiera un timeout a cada llamada por separado, tres que tarden poco menos que
+  /// su límite igual suman más de lo que nadie espera mirando un spinner.
+  Future<void> _buscar() async {
       if (!await AkPush.tieneUbicacion) {
         setState(() { _motivo = 'sin permiso'; _buscando = false; });
         return;
@@ -195,9 +249,6 @@ class _DondeEstuvoState extends State<DondeEstuvo> {
         return;
       }
       _pintar(p);
-    } catch (e) {
-      if (mounted) setState(() { _motivo = 'falló: $e'; _buscando = false; });
-    }
   }
 
   @override

@@ -221,8 +221,28 @@ AccionDePermiso decidirQueHacer({
   }
 
   // ¿Es el momento que el comercio eligió?
+  //
+  // 🔴 EL «ARRANQUE» SE RESCATA EN EL PRIMER LOGIN, Y SIN ESTO NO PEDÍA NUNCA.
+  //
+  // Medido el 2026-09-05, con Juan mirando su teléfono: entró como una persona del
+  // núcleo y no le apareció ningún diálogo de permiso; tuvo que tocar la campanita.
+  // La causa: `Disparador.arranque` no lo pasa NADIE en el SDK —el único que llama a
+  // esta función es `planearInicioDeSesion`, siempre con `login`—, así que un comercio
+  // con la política en «arranque» quedaba sin que se le pidiera el permiso jamás. La
+  // única puerta era `init(pedirPermisoAlIniciar: true)`, que no pasa por acá y por lo
+  // tanto ignora la pregunta blanda, el reintento y el «obligatorio».
+  //
+  // Una opción de la consola que no hace nada es peor que no tenerla: el comercio la
+  // elige, la ve guardada, y su gente nunca recibe un aviso sin que nada falle.
+  //
+  // El rescate es angosto a propósito: **sólo si todavía no se preguntó NUNCA**. Si el
+  // arranque ya preguntó, `yaSePregunto` es verdadero y acá no se vuelve a preguntar,
+  // así que no puede producir dos diálogos. Y no se pide al arrancar en frío —que sigue
+  // siendo el peor momento— sino al entrar, cuando la persona ya sabe qué es la app.
   final esElMomento = switch (politica.momento) {
-    MomentoDelPermiso.arranque => disparador == Disparador.arranque,
+    MomentoDelPermiso.arranque =>
+      disparador == Disparador.arranque ||
+          (disparador == Disparador.login && !yaSePregunto),
     MomentoDelPermiso.login => disparador == Disparador.login,
     MomentoDelPermiso.laAppDecide => disparador == Disparador.laAppLoPidio,
   };
