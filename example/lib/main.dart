@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 
 import 'la_solicitud.dart';
 import 'lo_recolectado.dart';
+import 'llavero.dart';
 import 'nucleo.dart';
+import 'selector_de_comercio.dart';
 
 /// EL NOMBRE VISIBLE DE LA APLICACIÓN.
 ///
@@ -107,13 +109,34 @@ class _PantallaState extends State<Pantalla> {
 
   Future<void> _arrancar() async {
     try {
-      // El permiso NO se pide acá: lo decide la política del comercio cuando la
-      // persona inicia sesión. Es el momento en que ya sabe qué es la app.
-      await AkPush.init(
-        llave: _llave,
-        url: _url,
-        pedirPermisoAlIniciar: false,
-      );
+      /// ══ DE QUÉ COMERCIO ARRANCA ═══════════════════════════════════════════════
+      ///
+      /// Con llavero, la aplicación sirve a varios comercios y hay que resolver cuál
+      /// antes de arrancar el SDK. El orden es: el que quedó elegido la última vez, y
+      /// si no hay ninguno —o el que había ya no está en la lista— se pregunta.
+      ///
+      /// Sin llavero se comporta como siempre: el comercio sale de la llave con la que
+      /// se compiló. Eso es lo que hace que este cambio no rompa el uso normal del
+      /// ejemplo ni el de la aplicación de un comercio de verdad.
+      if (hayLlavero) {
+        final elegido = await _resolverComercio();
+        if (elegido == null) {
+          // Se preguntó y no se eligió nada. No se arranca el SDK contra un comercio
+          // que nadie eligió: quedaría midiendo para el de compilación sin que se vea.
+          setState(() => _estado = 'sin comercio elegido');
+          return;
+        }
+        await ComercioActivo.aplicar(elegido, arranqueInicial: true);
+        _anotar('comercio: ${elegido.nombre} (${elegido.slug})');
+      } else {
+        // El permiso NO se pide acá: lo decide la política del comercio cuando la
+        // persona inicia sesión. Es el momento en que ya sabe qué es la app.
+        await AkPush.init(
+          llave: _llave,
+          url: _url,
+          pedirPermisoAlIniciar: false,
+        );
+      }
       setState(() {
         _estado = 'listo';
         _token = AkPush.token;
@@ -128,6 +151,46 @@ class _PantallaState extends State<Pantalla> {
       setState(() => _estado = 'falló: ${e.code.name}');
       _anotar('${e.message}${e.details != null ? " — ${e.details}" : ""}');
     }
+  }
+
+  /// Cuál comercio usar al arrancar: el recordado, o el que elija la persona.
+  ///
+  /// Si el recordado ya no está en la lista —se le apagó la marca de demostración, o se
+  /// borró— **se vuelve a preguntar** en vez de caer al primero: elegir por su cuenta a
+  /// cuál comercio le escribe los datos es exactamente lo que esta pantalla no debe hacer.
+  Future<ComercioDePrueba?> _resolverComercio() async {
+    final slug = await ComercioActivo.slugRecordado();
+    if (slug != null) {
+      try {
+        final lista = await Llavero.comercios();
+        final recordado = lista.where((c) => c.slug == slug).firstOrNull;
+        if (recordado != null && recordado.llave.isNotEmpty) return recordado;
+        _anotar('el comercio «$slug» ya no está en el llavero — hay que elegir otro');
+      } on ErrorDelLlavero catch (e) {
+        // Sin llavero no se puede resolver nada, y arrancar con el comercio de
+        // compilación mientras la persona cree estar en otro es peor que no arrancar.
+        _anotar(e.mensaje);
+      }
+    }
+    if (!mounted) return null;
+    return Navigator.of(context).push<ComercioDePrueba>(MaterialPageRoute(
+      builder: (_) => const SelectorDeComercio(puedeCancelar: false),
+    ));
+  }
+
+  /// Cambiar de comercio con la aplicación andando. Lo hace el selector; acá sólo se
+  /// refresca lo que la pantalla muestra, porque el SDK ya quedó apuntando al nuevo.
+  Future<void> _cambiarDeComercio() async {
+    final elegido = await Navigator.of(context).push<ComercioDePrueba>(
+      MaterialPageRoute(builder: (_) => const SelectorDeComercio()),
+    );
+    if (elegido == null || !mounted) return;
+    setState(() {
+      _sesion = null;
+      _estado = 'listo';
+      _token = AkPush.token;
+    });
+    _anotar('cambiado a ${elegido.nombre} — el teléfono se dio de baja en el anterior');
   }
 
   Future<void> _entrar(PersonaDelNucleo p) async {
@@ -267,9 +330,20 @@ class _PantallaState extends State<Pantalla> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_nombreDeLaApp),
+        // Con varios comercios, el nombre de la aplicación no alcanza: lo que hay que
+        // poder leer de un vistazo es EN CUÁL se está trabajando. Un dato mostrado en
+        // una pantalla que se cambia de comercio sin decir cuál es un dato ambiguo.
+        title: Text(ComercioActivo.actual?.nombre ?? _nombreDeLaApp),
         backgroundColor: t.colorScheme.inversePrimary,
         actions: [
+          // Sólo aparece si esta aplicación se compiló con llavero: en la app de un
+          // comercio de verdad no hay a qué cambiarse.
+          if (hayLlavero)
+            IconButton(
+              onPressed: _cambiarDeComercio,
+              icon: const Icon(Icons.swap_horiz),
+              tooltip: 'Cambiar de comercio',
+            ),
           // 🔴 LA CAMPANITA — una línea, y viene hecha del SDK.
           //
           // Muestra un punto rojo cuando los avisos están apagados, explica al tocarla,

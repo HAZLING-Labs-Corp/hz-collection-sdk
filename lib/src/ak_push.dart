@@ -925,6 +925,56 @@ class AkPush {
   /// Cierra el ciclo: da de baja el teléfono y limpia la barra de estado.
   static Future<void> alCerrarSesion() => _yo._logout();
 
+  /// ══ CAMBIAR DE COMERCIO — para una aplicación que sirve a varios ═══════════
+  ///
+  /// Escrito el 2026-09-06. Existe para la aplicación de prueba, que tiene que poder
+  /// moverse entre los comercios de ejemplo sin recompilarse; y sirve a cualquier
+  /// aplicación que atienda a más de un comercio con el mismo binario.
+  ///
+  /// 🔴 NO ALCANZA CON LLAMAR A `init()` OTRA VEZ, Y ESTE ES EL MOTIVO.
+  ///
+  /// `init()` descarta la cuenta anterior sólo cuando **la versión de la configuración
+  /// cambió** (`cacheada.version != config.version`). Eso alcanza para un comercio que
+  /// edita su ficha, y NO alcanza para cambiar de comercio: dos comercios distintos pueden
+  /// tener su configuración en la misma versión —el contador es de cada uno— y entonces:
+  ///
+  ///   · el token viejo se conserva, y **un token sólo vale en el proyecto que lo emitió**:
+  ///     el registro sale bien, la consola muestra el aparato, y el aviso no llega nunca;
+  ///   · si además los proyectos de Firebase son distintos, `_iniciarFirebase` encuentra la
+  ///     app ya inicializada con otro `appId` y **tumba el arranque** con «la aplicación ya
+  ///     inicializó Firebase con otra cuenta».
+  ///
+  /// Así que el cambio de comercio se dice, no se deduce. Acá se da de baja el teléfono en
+  /// el comercio que se deja —si no, queda registrado en los dos y recibe los avisos de
+  /// ambos—, se descarta la cuenta anterior entera (token, apps de Firebase y sesión) y se
+  /// arranca de cero contra la llave nueva.
+  ///
+  /// Devuelve cuando el SDK ya está andando con el comercio nuevo. Si la llave nueva es
+  /// inválida, lanza igual que `init()`: es preferible a quedar a mitad de camino sin
+  /// avisar, con la baja del anterior ya hecha.
+  static Future<void> cambiarDeComercio({
+    required String llave,
+    String? url,
+    bool pedirPermisoAlIniciar = false,
+  }) async {
+    // La baja va primero y con red: después de descartar el token no hay con qué darla.
+    await _yo._logout();
+    await _yo._descartarCuentaAnterior();
+    // También la configuración cacheada: es del comercio que se deja, y `init()` la usa
+    // para decidir si descartar. Dejarla haría que el arranque nuevo se compare contra la
+    // ficha de otro comercio.
+    await _yo._almacen.olvidarConfig();
+    _yo._config = null;
+    await _yo._init(
+      apiKey: llave,
+      baseUrl: url,
+      // Por omisión NO se vuelve a pedir el permiso: la persona ya lo contestó en este
+      // teléfono, y volver a pedirlo en cada cambio de comercio es la forma más rápida de
+      // que lo niegue para siempre. La política del comercio nuevo decide igual.
+      pedirPermisoAlIniciar: pedirPermisoAlIniciar,
+    );
+  }
+
   // ── Arranque ────────────────────────────────────────────────────────────
 
   /// Pide la configuración, conecta con Firebase, pide permiso y consigue la

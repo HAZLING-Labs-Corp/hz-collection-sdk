@@ -1,5 +1,22 @@
 # Un perfil de lanzamiento por comercio
 
+## 🔴 Empezá por `demostracion.sh` — 2026-09-06
+
+**Ya no hace falta un perfil por comercio.** `demostracion.sh` compila la aplicación con
+el **llavero**: al arrancar pregunta a qué comercio entrar, y desde el botón de la cabecera
+se cambia a otro **sin recompilar**. La lista sale de Collection.
+
+```bash
+./example/comercios/demostracion.sh              # emulador de Android
+./example/comercios/demostracion.sh 192.168.1.40 # teléfono real: la IP de la máquina
+```
+
+Los perfiles por comercio (`rodar.sh`, `mundototal.sh`) siguen sirviendo para compilar
+contra UNO solo —una prueba aislada, un APK para repartir— y para eso está el resto de
+este documento.
+
+---
+
 Esta aplicación es **una sola** y se compila para varios comercios. No hay una copia por
 comercio y no hay ningún archivo que editar antes de correrla: el comercio **sale de la
 llave**, y lo único que cambia entre uno y otro son los cuatro valores que se pasan al
