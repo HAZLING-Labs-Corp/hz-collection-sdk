@@ -450,9 +450,15 @@ class _PantallaState extends State<Pantalla> {
 /// comercio. La app **no guarda copia**: si el núcleo no contesta, esta pantalla
 /// dice qué ruta falta en vez de fingir que tiene gente.
 ///
-/// El directorio aparece **después** de entrar, porque el núcleo lo protege: el
-/// elenco son personas con cédula, ciudad y correo, y un directorio abierto es
-/// una cartera publicada.
+/// El directorio lo protege el núcleo, así que hay que presentarle una credencial.
+/// Son dos, y no es lo mismo:
+///
+/// - **La llave de la aplicación** (`--dart-define=NUCLEO_LLAVE=mtk_…`): la trae el
+///   APK compilado. Con ella el directorio se ve de entrada y **tocar un nombre
+///   entra** — sin usuario ni clave. Es lo que Juan pidió el 2026-09-05 para el
+///   APK de demostración.
+/// - **La sesión de una persona**: cuando la copia se compiló sin llave. Ahí el
+///   directorio recién aparece después de entrar.
 class _Entrada extends StatefulWidget {
   @override
   State<_Entrada> createState() => _EntradaState();
@@ -470,14 +476,20 @@ class _EntradaState extends State<_Entrada> {
   bool _cargandoDirectorio = false;
   String? _errorDirectorio;
 
+  /// ¿Esta copia se compiló con su propia llave de consulta al núcleo?
+  ///
+  /// Es lo que decide la pantalla entera: con llave, el directorio manda y tocar
+  /// un nombre entra. Sin llave, no hay de dónde sacar la lista antes de tener
+  /// sesión, así que primero hay que entrar con usuario y clave.
+  bool get _conLlave => nucleoLlave.isNotEmpty;
+
   @override
   void initState() {
     super.initState();
-    // Si ya se entró antes en esta corrida, hay sesión y el directorio se puede
-    // mirar de una.
     // Con llave de aplicación el directorio se puede ver ANTES de entrar: es lo que
-    // permite elegir con quién entrar sin conocer a nadie de antemano.
-    if (nucleoLlave.isNotEmpty || Nucleo.token != null) _traerDirectorio();
+    // permite elegir con quién entrar sin conocer a nadie de antemano. Sin llave,
+    // sólo si ya hay sesión de una vuelta anterior.
+    if (_conLlave || Nucleo.token != null) _traerDirectorio();
   }
 
   @override
@@ -516,6 +528,146 @@ class _EntradaState extends State<_Entrada> {
     }
   }
 
+  /// El formulario de usuario y clave.
+  ///
+  /// Sigue existiendo con llave compilada, pero abajo y plegado: es el único camino
+  /// que prueba `POST /auth/login` del núcleo de verdad, y borrarlo dejaría esa ruta
+  /// sin nadie que la ejercite.
+  List<Widget> _formularioDeClave(ThemeData t) => [
+        TextField(
+          controller: _usuario,
+          autofocus: !_conLlave,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            labelText: 'Usuario',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _clave,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: 'Clave',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (_) => _entrando ? null : _entrar(),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: t.colorScheme.errorContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(_error!,
+                style: t.textTheme.bodySmall
+                    ?.copyWith(color: t.colorScheme.onErrorContainer)),
+          ),
+        ],
+        const SizedBox(height: 14),
+        FilledButton(
+          onPressed: _entrando ? null : _entrar,
+          child: Text(_entrando ? 'Entrando…' : 'Entrar'),
+        ),
+        const SizedBox(height: 8),
+        Text('La semilla del núcleo trae usuario1 … usuario100, con clave '
+            'admin123.', style: t.textTheme.bodySmall),
+      ];
+
+  /// El directorio: la lista de personas que vive en el núcleo.
+  List<Widget> _bloqueDeDirectorio(ThemeData t) => [
+        Row(
+          children: [
+            Expanded(
+              child: Text(_conLlave ? '¿Con quién entrás?' : 'El directorio',
+                  style: t.textTheme.titleMedium),
+            ),
+            if (_conLlave || Nucleo.token != null)
+              IconButton(
+                onPressed: _cargandoDirectorio ? null : _traerDirectorio,
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Volver a traer',
+              ),
+          ],
+        ),
+        if (!_conLlave && Nucleo.token == null)
+          Text('Se ve después de entrar: el núcleo lo protege con sesión, '
+              'porque es la cartera del comercio.',
+              style: t.textTheme.bodySmall)
+        else ...[
+          if (_conLlave)
+            Text('Tocá un nombre y entrás como esa persona. Esta copia trae su '
+                'propia llave de consulta, así que no hace falta la clave de nadie.',
+                style: t.textTheme.bodySmall),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _busqueda,
+            decoration: const InputDecoration(
+              labelText: 'Buscar por nombre, cédula, ciudad o estado',
+              prefixIcon: Icon(Icons.search),
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            onSubmitted: (_) => _traerDirectorio(),
+          ),
+          const SizedBox(height: 8),
+          if (_cargandoDirectorio)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_errorDirectorio != null)
+            // Nombra la ruta que falta en vez de romperse.
+            Text(_errorDirectorio!,
+                style: t.textTheme.bodySmall
+                    ?.copyWith(color: t.colorScheme.error))
+          else if (_directorio != null)
+            ...[
+              Text('${_directorio!.length} personas',
+                  style: t.textTheme.bodySmall),
+              for (final p in _directorio!)
+                ListTile(
+                  dense: true,
+                  // Las empresas se marcan con RIF y los empleados con su
+                  // organización: son los casos que hay que poder distinguir
+                  // de un vistazo entre las cien.
+                  title: Text(p.tipo == TipoDeSujeto.juridica
+                      ? '${p.nombre} · RIF ${p.cedula}'
+                      : p.organizacion != null
+                          ? '${p.nombre} · ${p.organizacion!.nombre ?? p.organizacion!.codigo}'
+                          : p.nombre),
+                  subtitle: Text('identificador ${p.uuid}\n'
+                      'cédula ${p.cedula} · ${p.estado} · usuario ${p.usuario}'),
+                  trailing: _conLlave ? const Icon(Icons.login, size: 18) : null,
+                  /*
+                    🔴 CON LLAVE, TOCAR ENTRA — pedido de Juan, 2026-09-05:
+                    «que no pida usuario y contraseña».
+
+                    Antes tocar sólo completaba el usuario y había que escribir
+                    `admin123` cien veces. Eso probaba el login del núcleo, sí, pero
+                    el APK es para demostrar Collection —el permiso, el push, la
+                    ubicación—, y la clave era un peaje antes de llegar a lo que se
+                    va a mostrar. El login sigue abajo, plegado, para quien quiera
+                    ejercer ese camino.
+                  */
+                  onTap: () {
+                    if (_conLlave) {
+                      Navigator.pop(context, p);
+                      return;
+                    }
+                    _usuario.text = p.usuario;
+                    FocusScope.of(context).unfocus();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Usuario ${p.usuario} · falta la clave')),
+                    );
+                  },
+                ),
+            ],
+        ],
+      ];
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -534,118 +686,26 @@ class _EntradaState extends State<_Entrada> {
               style: t.textTheme.bodySmall),
           const SizedBox(height: 16),
 
-          TextField(
-            controller: _usuario,
-            autofocus: true,
-            autocorrect: false,
-            decoration: const InputDecoration(
-              labelText: 'Usuario',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _clave,
-            obscureText: true,
-            decoration: const InputDecoration(
-              labelText: 'Clave',
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: (_) => _entrando ? null : _entrar(),
-          ),
-
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: t.colorScheme.errorContainer,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(_error!,
-                  style: t.textTheme.bodySmall
-                      ?.copyWith(color: t.colorScheme.onErrorContainer)),
-            ),
-          ],
-
-          const SizedBox(height: 14),
-          FilledButton(
-            onPressed: _entrando ? null : _entrar,
-            child: Text(_entrando ? 'Entrando…' : 'Entrar'),
-          ),
-
-          const SizedBox(height: 8),
-          Text('La semilla del núcleo trae usuario1 … usuario100, con clave '
-              'admin123.', style: t.textTheme.bodySmall),
-
-          const Divider(height: 32),
-
-          Row(
-            children: [
-              Expanded(child: Text('El directorio', style: t.textTheme.titleMedium)),
-              if (nucleoLlave.isNotEmpty || Nucleo.token != null)
-                IconButton(
-                  onPressed: _cargandoDirectorio ? null : _traerDirectorio,
-                  icon: const Icon(Icons.refresh),
-                  tooltip: 'Volver a traer',
-                ),
-            ],
-          ),
-
-          if (nucleoLlave.isEmpty && Nucleo.token == null)
-            Text('Se ve después de entrar: el núcleo lo protege con sesión, '
-                'porque es la cartera del comercio.',
-                style: t.textTheme.bodySmall)
-          else ...[
-            TextField(
-              controller: _busqueda,
-              decoration: const InputDecoration(
-                labelText: 'Buscar por nombre, cédula, ciudad o estado',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              onSubmitted: (_) => _traerDirectorio(),
-            ),
-            const SizedBox(height: 8),
-            if (_cargandoDirectorio)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_errorDirectorio != null)
-              // Nombra la ruta que falta en vez de romperse.
-              Text(_errorDirectorio!,
-                  style: t.textTheme.bodySmall
-                      ?.copyWith(color: t.colorScheme.error))
-            else if (_directorio != null)
-              ...[
-                Text('${_directorio!.length} personas',
-                    style: t.textTheme.bodySmall),
-                for (final p in _directorio!)
-                  ListTile(
-                    dense: true,
-                    // Las empresas se marcan con RIF y los empleados con su
-                    // organización: son los casos que hay que poder distinguir
-                    // de un vistazo entre las cien.
-                    title: Text(p.tipo == TipoDeSujeto.juridica
-                        ? '${p.nombre} · RIF ${p.cedula}'
-                        : p.organizacion != null
-                            ? '${p.nombre} · ${p.organizacion!.nombre ?? p.organizacion!.codigo}'
-                            : p.nombre),
-                    subtitle: Text('identificador ${p.uuid}\n'
-                        'cédula ${p.cedula} · ${p.estado} · usuario ${p.usuario}'),
-                    // Tocar NO entra: completa el usuario. Entrar necesita la
-                    // clave, igual que en un sistema de verdad.
-                    onTap: () {
-                      _usuario.text = p.usuario;
-                      FocusScope.of(context).unfocus();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Usuario ${p.usuario} · falta la clave')),
-                      );
-                    },
-                  ),
+          // Con llave, el directorio va PRIMERO y es el camino normal.
+          if (_conLlave) ...[
+            ..._bloqueDeDirectorio(t),
+            const Divider(height: 32),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: Text('Entrar con usuario y clave',
+                  style: t.textTheme.titleMedium),
+              subtitle: Text('El camino que usa una persona de verdad',
+                  style: t.textTheme.bodySmall),
+              children: [
+                const SizedBox(height: 8),
+                ..._formularioDeClave(t),
+                const SizedBox(height: 8),
               ],
+            ),
+          ] else ...[
+            ..._formularioDeClave(t),
+            const Divider(height: 32),
+            ..._bloqueDeDirectorio(t),
           ],
         ],
       ),
