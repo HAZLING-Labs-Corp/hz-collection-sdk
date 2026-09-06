@@ -108,6 +108,7 @@ class ResultadoDeMedicion {
     required this.transmitio,
     required this.detalle,
     this.problema,
+    this.campos = 0,
   });
 
   /// Si la medición se pudo tomar. Es lo que dice si el módulo está vivo.
@@ -122,6 +123,14 @@ class ResultadoDeMedicion {
 
   /// Por qué salió mal, si salió mal. `null` cuando todo está en orden.
   final String? problema;
+
+  /// 🔴 CUÁNTOS CAMPOS SE MIDIERON — no cuántos se transmitieron.
+  ///
+  /// Son dos cosas distintas y hace falta la primera: la política puede decidir con toda razón
+  /// que no hay nada nuevo que mandar, y eso NO significa que el barrido haya quedado corto.
+  /// Sin este número, «midió bien y no hizo falta transmitir» y «el canal nativo devolvió un
+  /// mapa vacío» se ven iguales desde afuera — y el segundo es el que hay que reintentar.
+  final int campos;
 }
 
 /// MANDA LA MEDICIÓN, O SE LA CALLA — el único lugar donde se decide, para los tres módulos.
@@ -162,6 +171,7 @@ Future<ResultadoDeMedicion> enviarMedicion(
         midio: true,
         transmitio: false,
         detalle: 'no se transmitió: ${decision.porQue}',
+        campos: medido.length,
       );
     }
   }
@@ -183,6 +193,7 @@ Future<ResultadoDeMedicion> enviarMedicion(
       transmitio: false,
       detalle: 'el servicio no lo guardó: $descartadoPorQue',
       problema: 'el servicio no lo guardó: $descartadoPorQue',
+      campos: medido.length,
     );
   }
 
@@ -191,6 +202,7 @@ Future<ResultadoDeMedicion> enviarMedicion(
     midio: true,
     transmitio: true,
     detalle: 'transmitido: ${medido.length} campos',
+    campos: medido.length,
   );
 }
 
@@ -257,6 +269,14 @@ abstract class Modulo {
 
   /// Cada cuánto mide.
   Cadencia get cadencia;
+
+  /// Cuántos campos entregó su última medición.
+  ///
+  /// 🔴 Existe para poder distinguir «corrió» de «corrió y trajo algo». Un módulo cuyo canal
+  /// nativo devuelve un mapa vacío no lanza ninguna excepción: se ve exactamente igual que uno
+  /// que anduvo bien. Sin este número, la fachada no tiene forma de saber que el barrido quedó
+  /// corto, y era la causa de que dos personas quedaran con el bloque básico para siempre.
+  int get camposDelUltimoBarrido => 0;
 
   /// Los permisos de Android que necesita, con su nombre completo. Vacío para el nivel 0.
   ///

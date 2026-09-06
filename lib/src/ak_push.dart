@@ -6,6 +6,10 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier, VoidCallback, debugPrint;
 import 'package:flutter/material.dart'
     show BuildContext, Color, GlobalKey, NavigatorState, Widget;
+/* Sólo lo del ciclo de vida: se importa acotado, como el resto de este archivo, para que se
+   vea de un vistazo qué de Flutter usa el SDK y no se cuele media biblioteca sin querer. */
+import 'package:flutter/widgets.dart'
+    show AppLifecycleState, WidgetsBinding, WidgetsBindingObserver;
 
 import 'api_client.dart';
 import 'campanita.dart';
@@ -18,6 +22,7 @@ import 'permiso.dart';
 import 'consentimiento.dart';
 import 'politica.dart';
 import 'sesion.dart';
+import 'transmision/cadencia_de_barrido.dart';
 import 'modal_de_ubicacion.dart';
 import 'ubicacion.dart';
 import 'modulos/modulo.dart';
@@ -165,7 +170,7 @@ class AkPush {
   void _adoptarPolitica(PoliticaDeTransmision p) {
     if (identical(p, _politicaDeTransmision)) return;
     _politicaDeTransmision = p;
-    _porteroDeEnvio = PorteroDeEnvio(politica: p);
+    _porteroDeEnvio = PorteroDeEnvio(politica: p, huellas: HuellaLocal(comercio: _config?.comercio ?? ''));
     // El anterior suelta el gancho del ciclo de vida o quedarían dos escuchando, y cada
     // apertura de la aplicación anotaría dos `SESION_ABRE`.
     _comportamiento.soltar();
@@ -360,15 +365,64 @@ class AkPush {
     }
   }
 
-  Future<void> _correrModulos() async {
+  /// 🔴 VUELVE A MEDIR CUANDO LA PERSONA VUELVE A LA APLICACIÓN.
+  ///
+  /// Hasta hoy los módulos corrían **una sola vez, al entrar**, y nada más. Dos consecuencias,
+  /// las dos medidas contra la base el 2026-09-06:
+  ///
+  ///   · Si ese único barrido se cortaba, esa persona quedaba con las 18 señales del bloque
+  ///     básico PARA SIEMPRE. Dos de tres personas de un comercio estaban así, y los tres
+  ///     motores decían «0 de 38 reglas» sin que nada dijera por qué.
+  ///   · Y lo que Juan preguntó: *«el dispositivo puede estar hoy con la pantalla prendida y
+  ///     mañana apagada, o en cinco minutos cambió»*. Con una sola medición en la vida, la
+  ///     consola muestra el estado del día que la persona se registró, y lo muestra como si
+  ///     fuera el de ahora.
+  ///
+  /// El observador no mide: pregunta si toca. El freno vive en `_tocaRemedir`, así que volver
+  /// a la aplicación diez veces en un minuto no gasta diez barridos.
+  final _CicloDeVida _ciclo = _CicloDeVida();
+
+  void _mirarElCicloDeVida() {
+    if (_ciclo.montado) return;
+    _ciclo.montado = true;
+    _ciclo.alVolver = () => unawaited(_correrModulos());
+    WidgetsBinding.instance.addObserver(_ciclo);
+  }
+
+  /// Cuándo corrieron los módulos por última vez. Es lo que hace posible una cadencia.
+  DateTime? _ultimoBarrido;
+
+  /// Cuántos campos entregó ese barrido. Con esto se distingue «midió» de «midió bien».
+  int _camposDelUltimoBarrido = 0;
+
+  /// ¿Toca medir de nuevo? La regla vive en `cadencia_de_barrido.dart`, sola y probada.
+  bool _tocaRemedir({DateTime? ahora}) => tocaRemedir(
+        ahora: ahora ?? DateTime.now(),
+        ultimoBarrido: _ultimoBarrido,
+        camposDelUltimoBarrido: _camposDelUltimoBarrido,
+      );
+
+  Future<void> _correrModulos({bool forzado = false}) async {
     final id = _userId;
     if (id == null || _api == null) return;
+    if (!forzado && !_tocaRemedir()) return;
     try {
       final registro = RegistroDeModulos([
         ModuloDeAparato(),
         ModuloDeAutenticidad(),
         ModuloDeSenales(),
       ]);
+      /* 🔴 EL PORTERO SE REARMA CON EL COMERCIO DE AHORA, ANTES DE CORRER LOS MÓDULOS.
+         Es la línea que hace efectivo el arreglo: la huella de lo ya transmitido se guarda por
+         comercio, y sin rearmarlo acá el portero seguiría consultando la del comercio anterior
+         —que fue exactamente el defecto: el teléfono creía haber mandado a mundototal lo que le
+         había mandado a Rodar, y no mandaba nada—. Se rearma en cada barrido y no una sola vez
+         porque el comercio cambia en caliente, sin reiniciar la aplicación. */
+      _porteroDeEnvio = PorteroDeEnvio(
+        politica: _politicaDeTransmision,
+        huellas: HuellaLocal(comercio: _config?.comercio ?? ''),
+      );
+
       await registro.alEntrar(Contexto(
         api: _api!,
         instalacionId: await _almacen.leerOCrearInstalacionId(),
@@ -379,8 +433,14 @@ class AkPush {
         // primero, y una medición idéntica a la anterior no gasta una llamada.
         portero: _porteroDeEnvio,
       ));
+      /* Se anota DESPUÉS de correr, y con cuántos campos: un barrido que se anota antes de
+         terminar hace que un fallo se lea como un éxito, y el freno de quince minutos taparía
+         justamente el caso que hay que reintentar. */
+      _ultimoBarrido = DateTime.now();
+      _camposDelUltimoBarrido = registro.camposDelUltimoBarrido;
     } catch (_) {
-      // Ninguna señal vale romperle el inicio de sesión a nadie.
+      // Ninguna señal vale romperle el inicio de sesión a nadie. Y NO se anota el barrido:
+      // sin anotarlo, el próximo intento entra por la puerta del reintento corto.
     }
   }
 
@@ -1181,6 +1241,7 @@ class AkPush {
 
       await Presentador.instancia.iniciar();
       _escuchar();
+      _mirarElCicloDeVida();
       await _procesarArranqueEnFrio();
     } on AkPushError catch (e) {
       // Se guarda ANTES de propagarlo. El error de `init()` se le tira a quien
@@ -2162,4 +2223,20 @@ class AkPush {
 
 extension _Primero<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
+}
+
+
+/// Escucha cuándo la aplicación vuelve al frente. Nada más.
+///
+/// 🔴 Es una clase aparte y no un `WidgetsBindingObserver` sobre `AkPush` a propósito: `AkPush`
+/// es un singleton privado con estado, y hacerlo observador lo ataría al ciclo de vida de
+/// Flutter — que es justo lo que impide probarlo sin montar una aplicación.
+class _CicloDeVida extends WidgetsBindingObserver {
+  bool montado = false;
+  void Function()? alVolver;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState estado) {
+    if (estado == AppLifecycleState.resumed) alVolver?.call();
+  }
 }

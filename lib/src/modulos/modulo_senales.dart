@@ -79,6 +79,11 @@ class ModuloDeSenales extends Modulo {
   @override
   Cadencia get cadencia => Cadencia.episodica;
 
+  int _camposDelUltimo = 0;
+
+  @override
+  int get camposDelUltimoBarrido => _camposDelUltimo;
+
   @override
   List<String> get permisos => const [];
 
@@ -94,6 +99,7 @@ class ModuloDeSenales extends Modulo {
       // decide es `enviarMedicion`; acá sólo se mide y se anota qué contestó.
       final medido = await medir();
       final r = await enviarMedicion(c, nombre, medido);
+      _camposDelUltimo = r.campos;
       if (r.midio) _ultimaVez = DateTime.now();
       _ultimoDetalle = r.detalle;
       _ultimoMotivo = r.problema;

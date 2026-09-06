@@ -35,6 +35,15 @@ class RegistroDeModulos {
 
   List<Modulo> get todos => List.unmodifiable(_modulos);
 
+  /// Cuántos campos entregó el último barrido, sumando los módulos.
+  ///
+  /// Es lo que la fachada mira para saber si el barrido quedó corto y hay que reintentar antes
+  /// de la cadencia normal. Se suma sobre TODOS y no sólo sobre los activos: un módulo que el
+  /// comercio apagó entrega cero, y contarlo como corto haría reintentar para siempre algo que
+  /// nunca va a traer nada.
+  int get camposDelUltimoBarrido =>
+      _modulos.fold<int>(0, (n, m) => n + m.camposDelUltimoBarrido);
+
   /// Los que el servidor dejó activos para este comercio.
   ///
   /// Si el servidor no dijo nada del módulo, **no corre**. Es a propósito: prender algo por

@@ -29,10 +29,35 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'politica_de_transmision.dart';
 
 class HuellaLocal {
-  const HuellaLocal();
+  const HuellaLocal({this.comercio = ''});
 
-  static String _clave(String modulo) => 'akpush.huellaEnviada.$modulo';
-  static String _claveResync(String modulo) => 'akpush.resincronizado.$modulo';
+  /// 🔴 DE QUÉ COMERCIO ES ESTA HUELLA. Sin esto, cambiar de comercio rompe la recolección.
+  ///
+  /// Encontrado el 2026-09-06 midiendo por qué un comercio recibía 18 señales y otro 125, con
+  /// el mismo teléfono y la misma aplicación. La cadena era ésta:
+  ///
+  ///   1. el teléfono mide sus ~125 señales y se las manda a Rodar
+  ///   2. anota en el disco «ya mandé esto», con la clave `akpush.huellaEnviada.senales`
+  ///   3. se cambia a mundototal — que del otro lado NO TIENE NADA
+  ///   4. mide otra vez, compara contra esa huella, y concluye «no cambió nada»
+  ///   5. **no manda**. Y como el bloque básico del aparato viaja por otro camino que no
+  ///      consulta al portero, del otro lado quedan 18 señales y ninguna de los módulos.
+  ///
+  /// La persona queda inevaluable para siempre, en silencio: los tres motores dicen «0 de 38
+  /// reglas» y la consola lo muestra como «no sumó puntos», que se lee como que la miramos.
+  ///
+  /// 🔴 Y LA CLAVE LLEVA EL COMERCIO EN VEZ DE BORRARSE AL CAMBIAR. Borrar también arreglaría
+  /// el defecto, pero volver al comercio anterior retransmitiría las 125 señales que ese
+  /// comercio ya tiene — y con dos comercios en uso alternado, cada cambio pagaría un barrido
+  /// completo. Con el comercio en la clave, cada uno recuerda lo suyo y ninguno pisa al otro.
+  ///
+  /// Vacío conserva la clave vieja, así que un SDK que todavía no lo pase se comporta igual.
+  final String comercio;
+
+  String get _sufijo => comercio.isEmpty ? '' : '.$comercio';
+
+  String _clave(String modulo) => 'akpush.huellaEnviada.$modulo$_sufijo';
+  String _claveResync(String modulo) => 'akpush.resincronizado.$modulo$_sufijo';
 
   /// Lo último que se mandó de este módulo: `nombre del campo → hash`. Vacío si nunca.
   Future<Map<String, String>> leer(String modulo) async {

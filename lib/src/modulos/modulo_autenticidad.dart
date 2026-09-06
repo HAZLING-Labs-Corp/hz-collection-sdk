@@ -59,6 +59,11 @@ class ModuloDeAutenticidad extends Modulo {
   @override
   Cadencia get cadencia => Cadencia.episodica;
 
+  int _camposDelUltimo = 0;
+
+  @override
+  int get camposDelUltimoBarrido => _camposDelUltimo;
+
   @override
   List<String> get permisos => const [];
 
@@ -72,6 +77,7 @@ class ModuloDeAutenticidad extends Modulo {
       // que es justo la señal antifraude, viajan los cinco.
       final medido = await medir();
       final r = await enviarMedicion(c, nombre, medido);
+      _camposDelUltimo = r.campos;
       if (r.midio) _ultimaVez = DateTime.now();
       _ultimoDetalle = r.detalle;
       _ultimoMotivo = r.problema;

@@ -50,6 +50,11 @@ class ModuloDeAparato extends Modulo {
   @override
   Cadencia get cadencia => Cadencia.episodica;
 
+  int _camposDelUltimo = 0;
+
+  @override
+  int get camposDelUltimoBarrido => _camposDelUltimo;
+
   @override
   List<String> get permisos => const [];
 
@@ -69,6 +74,7 @@ class ModuloDeAparato extends Modulo {
       // sin declararlo, el portero no tenía cómo saber de qué módulo era la medición.
       final medido = await _medir();
       final r = await enviarMedicion(c, nombre, medido);
+      _camposDelUltimo = r.campos;
       if (r.midio) _ultimaVez = DateTime.now();
       _ultimoDetalle = r.detalle;
       _ultimoMotivo = r.problema;
