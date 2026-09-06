@@ -70,10 +70,16 @@ class ComercioActivo {
     // directorio en cuanto aparece, y con el núcleo viejo traería las personas del
     // comercio anterior.
     nucleoUrl = c.nucleoUrl;
-    // La llave de consulta del núcleo es de cada núcleo. El llavero todavía no la
-    // entrega —el núcleo de cada comercio la emite— así que se limpia: sin llave, la
-    // pantalla de entrada pide usuario y clave, que es el camino que siempre funcionó.
-    nucleoLlave = '';
+    /// 🔴 LA LLAVE DEL NÚCLEO VIENE DEL LLAVERO — arreglado el 2026-09-06.
+    ///
+    /// Acá se limpiaba, y eso hacía RETROCEDER a la aplicación: sin llave, la pantalla de
+    /// entrada cae al camino viejo y vuelve a pedir usuario y clave, que es justo lo que se
+    /// había quitado el 2026-09-05 —*«no quiero colocar mi clave y mi contraseña en la app
+    /// para poder consultar hacia el core»*—.
+    ///
+    /// Ahora la trae el llavero, por comercio. Si viene vacía se conserva la que se compiló
+    /// —mejor que ninguna— y el selector lo dice en la lista de lo que le falta.
+    if (c.nucleoLlave.isNotEmpty) nucleoLlave = c.nucleoLlave;
     // La sesión del núcleo anterior no vale en el nuevo, y una sesión de otro sistema
     // devuelve 401 que en la pantalla se lee como «el núcleo no contesta».
     Nucleo.token = null;
@@ -241,7 +247,8 @@ class _Fila extends StatelessWidget {
             Text(
               comercio.nucleoUrl.isEmpty
                   ? 'sin núcleo: no va a haber lista de personas'
-                  : 'personas de ${comercio.nucleoUrl}',
+                  : 'personas de ${comercio.nucleoUrl}'
+                      '${comercio.nucleoLlave.isEmpty ? " (va a pedir usuario y clave)" : ""}',
               style: t.textTheme.bodySmall,
             ),
             for (final f in comercio.falta)

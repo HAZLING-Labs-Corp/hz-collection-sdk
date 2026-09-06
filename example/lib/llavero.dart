@@ -44,6 +44,7 @@ class ComercioDePrueba {
     required this.llave,
     required this.urlBase,
     required this.nucleoUrl,
+    required this.nucleoLlave,
     required this.paquete,
     required this.paquetes,
     required this.identidadExigida,
@@ -63,6 +64,15 @@ class ComercioDePrueba {
 
   /// De dónde salen SUS personas. Vacío = todavía no tiene núcleo declarado.
   final String nucleoUrl;
+
+  /// 🔴 La llave con la que esta aplicación LEE el directorio de ese núcleo.
+  ///
+  /// Es de la APLICACIÓN, no de una persona: el directorio está protegido, y sin esta llave
+  /// la pantalla de entrada tiene que pedir usuario y clave — que es meter una credencial
+  /// personal dentro de un APK, exactamente lo que se sacó el 2026-09-05.
+  ///
+  /// Es de cada núcleo, así que al cambiar de comercio cambia junto con la dirección.
+  final String nucleoLlave;
 
   /// Con qué paquete hay que haber compilado para que este comercio acepte la
   /// configuración. Si no coincide con el de la app, el servicio contesta 404.
@@ -88,6 +98,7 @@ class ComercioDePrueba {
         llave: (j['llave'] ?? '').toString(),
         urlBase: (j['url_base'] ?? '').toString(),
         nucleoUrl: (j['nucleo_url'] ?? '').toString(),
+        nucleoLlave: (j['nucleo_llave'] ?? '').toString(),
         paquete: (j['paquete'] ?? '').toString(),
         paquetes: ((j['paquetes'] as List?) ?? const []).map((x) => x.toString()).toList(),
         identidadExigida: j['identidad_exigida'] == true,
