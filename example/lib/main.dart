@@ -186,6 +186,15 @@ class _PantallaState extends State<Pantalla> {
     );
     if (elegido == null || !mounted) return;
     setState(() {
+      // 🔴 `_dentro` TAMBIÉN, y esto se encontró probándolo en el emulador: al cambiar de
+      // comercio la cabecera decía «CrediTotal / MundoTotal» y la tarjeta seguía mostrando
+      // a la persona de Rodar, con su cédula y su identificador. La sesión ya estaba
+      // cerrada del lado del SDK —el teléfono se había dado de baja— así que la pantalla
+      // afirmaba una sesión que no existía, en un comercio donde esa persona ni existe.
+      //
+      // Es el defecto más caro de esta pantalla: mostrar a alguien «adentro» de un
+      // comercio al que no entró es indistinguible de haber entrado de verdad.
+      _dentro = null;
       _sesion = null;
       _estado = 'listo';
       _token = AkPush.token;

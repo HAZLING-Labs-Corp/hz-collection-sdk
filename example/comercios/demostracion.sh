@@ -24,6 +24,11 @@ set -euo pipefail
 
 ANFITRION="${1:-10.0.2.2}"
 
+# El puerto de Collection. Se puede cambiar porque pasa de verdad: con dos ramas del back
+# levantadas a la vez —una por desarrollador— la segunda corre en otro puerto, y una
+# dirección fija manda la app a la instancia equivocada sin que nada falle.
+PUERTO="${PUERTO:-3085}"
+
 # La llave del llavero. No es un secreto en el sentido fuerte —viaja dentro del APK, como
 # cualquier llave de aplicación— y por eso el llavero sólo entrega llaves que registran
 # aparatos, y sólo de comercios marcados de demostración.
@@ -35,13 +40,13 @@ LLAVERO_LLAVE="${LLAVERO_LLAVE:-llavero-de-demostracion-en-calidad}"
 # paquetes, así que con éste alcanza para todos ellos.
 PAQUETE="${PAQUETE:-com.hazling.creditotal}"
 
-echo "▶ Demostración · llavero http://$ANFITRION:3085/api/llavero · paquete $PAQUETE"
+echo "▶ Demostración · llavero http://$ANFITRION:$PUERTO/api/llavero · paquete $PAQUETE"
 echo "  El comercio NO se elige acá: lo pregunta la app al arrancar."
 
 exec flutter run \
   -Ppaquete="$PAQUETE" \
   -Pnombre="Collection" \
   --dart-define=APP_NOMBRE=Collection \
-  --dart-define=LLAVERO_URL="http://$ANFITRION:3085/api/llavero" \
+  --dart-define=LLAVERO_URL="http://$ANFITRION:$PUERTO/api/llavero" \
   --dart-define=LLAVERO_LLAVE="$LLAVERO_LLAVE" \
-  --dart-define=AKPUSH_URL="http://$ANFITRION:3085/api/v1"
+  --dart-define=AKPUSH_URL="http://$ANFITRION:$PUERTO/api/v1"

@@ -45,6 +45,7 @@ class ComercioDePrueba {
     required this.urlBase,
     required this.nucleoUrl,
     required this.paquete,
+    required this.paquetes,
     required this.identidadExigida,
     required this.falta,
   });
@@ -67,6 +68,10 @@ class ComercioDePrueba {
   /// configuración. Si no coincide con el de la app, el servicio contesta 404.
   final String paquete;
 
+  /// TODOS los que este comercio acepta. Un solo paquete mostrado engaña: da a entender
+  /// que hay que compilar con ése, y quien use otro de la misma lista cree que está mal.
+  final List<String> paquetes;
+
   /// Si su identidad está EXIGIDA, esta aplicación NO puede entrar: haría falta el HMAC
   /// firmado por el backend del comercio, y ese secreto no puede vivir en un APK.
   final bool identidadExigida;
@@ -84,6 +89,7 @@ class ComercioDePrueba {
         urlBase: (j['url_base'] ?? '').toString(),
         nucleoUrl: (j['nucleo_url'] ?? '').toString(),
         paquete: (j['paquete'] ?? '').toString(),
+        paquetes: ((j['paquetes'] as List?) ?? const []).map((x) => x.toString()).toList(),
         identidadExigida: j['identidad_exigida'] == true,
         falta: ((j['falta'] as List?) ?? const []).map((x) => x.toString()).toList(),
       );

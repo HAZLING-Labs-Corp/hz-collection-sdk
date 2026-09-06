@@ -230,7 +230,13 @@ class _Fila extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text('${comercio.slug} · ${comercio.paquete}', style: t.textTheme.bodySmall),
+            Text(comercio.slug, style: t.textTheme.bodySmall),
+            Text(
+              comercio.paquetes.isEmpty
+                  ? 'sin ningún paquete registrado'
+                  : 'acepta ${comercio.paquetes.join(", ")}',
+              style: t.textTheme.bodySmall,
+            ),
             Text('reporta a ${comercio.urlBase}', style: t.textTheme.bodySmall),
             Text(
               comercio.nucleoUrl.isEmpty
