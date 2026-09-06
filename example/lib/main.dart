@@ -475,7 +475,9 @@ class _EntradaState extends State<_Entrada> {
     super.initState();
     // Si ya se entró antes en esta corrida, hay sesión y el directorio se puede
     // mirar de una.
-    if (Nucleo.token != null) _traerDirectorio();
+    // Con llave de aplicación el directorio se puede ver ANTES de entrar: es lo que
+    // permite elegir con quién entrar sin conocer a nadie de antemano.
+    if (nucleoLlave.isNotEmpty || Nucleo.token != null) _traerDirectorio();
   }
 
   @override
@@ -581,7 +583,7 @@ class _EntradaState extends State<_Entrada> {
           Row(
             children: [
               Expanded(child: Text('El directorio', style: t.textTheme.titleMedium)),
-              if (Nucleo.token != null)
+              if (nucleoLlave.isNotEmpty || Nucleo.token != null)
                 IconButton(
                   onPressed: _cargandoDirectorio ? null : _traerDirectorio,
                   icon: const Icon(Icons.refresh),
@@ -590,7 +592,7 @@ class _EntradaState extends State<_Entrada> {
             ],
           ),
 
-          if (Nucleo.token == null)
+          if (nucleoLlave.isEmpty && Nucleo.token == null)
             Text('Se ve después de entrar: el núcleo lo protege con sesión, '
                 'porque es la cartera del comercio.',
                 style: t.textTheme.bodySmall)

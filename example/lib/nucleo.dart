@@ -29,6 +29,31 @@ import 'package:http/http.dart' as http;
 const nucleoUrl =
     String.fromEnvironment('NUCLEO_URL', defaultValue: 'http://10.0.2.2:3010');
 
+/// ═══════════════════════════════════════════════════════════════════════════════
+/// 🔴 LA LLAVE DE CONSULTA — pedido de Juan, 2026-09-05
+/// ═══════════════════════════════════════════════════════════════════════════════
+///
+/// > *«No quiero colocar mi clave y mi contraseña en la app para poder consultar hacia el
+/// > core. En la app ya debería haber una consulta con un key de consulta de contacto.»*
+///
+/// Y tiene razón, porque lo que había mezclaba dos cosas:
+///
+/// · **quién entró** — una persona, con su usuario y su clave;
+/// · **qué puede leer la aplicación** — la aplicación, no una persona.
+///
+/// Antes el directorio se leía con la sesión de la persona que había entrado. Eso obliga a
+/// meter una credencial personal dentro de un APK que cualquiera descomprime, y le da a la
+/// app **todo lo que puede esa persona** — mucho más de lo que necesita para listar.
+///
+/// Es la misma forma que ya usamos con Collection: la app lleva su llave y con eso alcanza.
+/// El alcance de ésta es `contactos:leer` y nada más: no puede dar de alta, ni corregir,
+/// ni borrar.
+///
+/// ```
+/// flutter run --dart-define=NUCLEO_LLAVE=mtk_…
+/// ```
+const nucleoLlave = String.fromEnvironment('NUCLEO_LLAVE');
+
 /// Una persona, tal como la devuelve el núcleo.
 ///
 /// 🔴 El identificador principal es `uuid`. La cédula es un **alias**: sirve
@@ -191,8 +216,17 @@ class Nucleo {
     }
 
     if (r.statusCode == 401) {
-      token = null;
-      throw ErrorDelNucleo('La sesión venció. Volvé a entrar.');
+      if (nucleoLlave.isEmpty) {
+        token = null;
+        throw ErrorDelNucleo('La sesión venció. Volvé a entrar.');
+      }
+      /* Con llave, un 401 NO es «volvé a entrar»: la llave está mal o la revocaron, y
+         decirle a la persona que vuelva a entrar la manda a hacer algo que no arregla
+         nada. */
+      throw ErrorDelNucleo(
+        'El núcleo rechazó la llave de esta aplicación. Puede estar revocada o mal '
+        'compilada.',
+      );
     }
     if (r.statusCode != 200) {
       throw ErrorDelNucleo(
