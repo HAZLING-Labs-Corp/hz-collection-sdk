@@ -48,8 +48,16 @@ export 'src/device_info.dart' show DatosDelDispositivo;
 // quien no quiera dibujar nada pone `AkPush.campanita()` y listo.
 export 'src/campanita.dart' show CampanitaDeAvisos, EstadoDeAvisos;
 export 'src/modal_de_ubicacion.dart' show ModalDeUbicacion;
+// 🔴 `ModoDeLectura` va en el `show` o el comercio no puede ni nombrar el modo que le
+// devuelve `AkPush.modoDeUbicacion` — y sin poder nombrarlo no puede comprobar si el
+// segundo plano quedó andando, que es justo lo que hay que comprobar.
 export 'src/politica.dart'
-    show PoliticaDeUbicacion, TextosDeUbicacion, MomentoDeUbicacion;
+    show
+        PoliticaDeUbicacion,
+        TextosDeUbicacion,
+        TextosDeSiempre,
+        MomentoDeUbicacion,
+        ModoDeLectura;
 export 'src/push_message.dart' show AccionDePush, PushMessage;
 export 'src/remote_config.dart' show AkPushConfig, InfoDeModulo;
 // El sujeto — quien se loguea — y su documento y organización. Es la raíz del
@@ -70,3 +78,28 @@ export 'src/modulos/modulo_autenticidad.dart' show ModuloDeAutenticidad;
 export 'src/permisologia/campos.dart'
     show camposDeSenales, camposDeAutenticidad, gruposDeSenales, GrupoDeSenales, grupoDe;
 export 'src/permisologia/transformar.dart' show CampoRecolectado, Transformacion;
+
+// ── EL COMPORTAMIENTO DENTRO DE LA PROPIA APLICACIÓN ─────────────────────────
+//
+// Sin estos `show`, quien integra no puede nombrar lo que le devuelve
+// `AkPush.formulario(...)` y por lo tanto no puede guardarlo en un campo de su pantalla —
+// que es la única forma de usarlo. Un tipo que no se exporta no existe del otro lado.
+//
+// 🔴 `EventoDeComportamiento` y `ColaDeEventos` NO se exportan a propósito: son de adentro.
+// Quien integra declara formularios y campos; los eventos los arma el SDK, y dejar que se
+// armen de afuera es dejar que alguien invente un tipo de evento que el contrato no tiene.
+export 'src/comportamiento/comportamiento.dart'
+    show ObservadorDeFormulario, ObservadorDeCampo, EstadoDelComportamiento;
+// Los siete nombres del contrato, para que una aplicación pueda mostrarlos o filtrarlos sin
+// escribirlos a mano — que es cómo aparece el octavo nombre que nadie del otro lado conoce.
+export 'src/comportamiento/evento.dart' show TipoDeEvento;
+// Los cinco números de la política, con su motivo escrito al lado. Se exporta también para
+// poder volver al comportamiento de antes en una línea:
+// `AkPush.init(..., politicaDeTransmision: PoliticaDeTransmision.comoEstabaAntes)`.
+export 'src/transmision/politica_de_transmision.dart'
+    show
+        PoliticaDeTransmision,
+        DecisionDeEnvio,
+        senalesDeMomento,
+        momentosQueElBackTodaviaNoTiene,
+        senalesDeMomentoDe;

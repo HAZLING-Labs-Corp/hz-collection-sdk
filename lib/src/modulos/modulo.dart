@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../api_client.dart';
 import '../remote_config.dart';
+import '../transmision/huella_local.dart';
 
 /// CADA CUÁNTO MIDE UN MÓDULO.
 ///
@@ -68,6 +69,7 @@ class Contexto {
     required this.instalacionId,
     required this.sujetoId,
     required this.config,
+    this.portero,
   });
 
   /// Para hablarle al servicio. Ya trae la llave y el comercio resueltos.
@@ -82,6 +84,114 @@ class Contexto {
 
   /// Lo que el servidor dijo de este comercio, incluido qué módulos activó.
   final AkPushConfig? config;
+
+  /// QUIÉN DECIDE SI ESTA MEDICIÓN SE MANDA O SE CALLA.
+  ///
+  /// 🔴 Es opcional y por omisión no está, y eso es deliberado: sin portero, un módulo
+  /// **manda siempre**, que es exactamente lo que hacían los tres módulos antes de que
+  /// existiera la política. Un `Contexto` armado en una prueba vieja sigue comportándose
+  /// igual que antes sin tocar la prueba.
+  ///
+  /// Con portero, el módulo pregunta antes de hablar y se ahorra la llamada cuando lo que
+  /// midió es idéntico a lo último que mandó. Ver `politica_de_transmision.dart`.
+  final PorteroDeEnvio? portero;
+}
+
+/// CÓMO SALIÓ UNA MEDICIÓN: si se mandó, si no hizo falta, o si se rompió algo.
+///
+/// Los tres estados son distintos y confundirlos es lo que ya costó una tarde: hasta el
+/// 2026-09-01 «el servicio lo descartó» y «se guardó» se veían iguales, y el diagnóstico
+/// afirmaba que todo andaba mientras del otro lado no quedaba nada.
+class ResultadoDeMedicion {
+  const ResultadoDeMedicion({
+    required this.midio,
+    required this.transmitio,
+    required this.detalle,
+    this.problema,
+  });
+
+  /// Si la medición se pudo tomar. Es lo que dice si el módulo está vivo.
+  final bool midio;
+
+  /// Si además salió por la red. `false` con [problema] en nulo NO es un fallo: es la
+  /// política diciendo que no hacía falta.
+  final bool transmitio;
+
+  /// Una línea legible de qué pasó, para el diagnóstico.
+  final String detalle;
+
+  /// Por qué salió mal, si salió mal. `null` cuando todo está en orden.
+  final String? problema;
+}
+
+/// MANDA LA MEDICIÓN, O SE LA CALLA — el único lugar donde se decide, para los tres módulos.
+///
+/// 🔴 Está acá y no en cada módulo porque son tres módulos y la decisión es una sola. Con
+/// esto en cada uno, el cuarto que se escriba mañana se va a olvidar de preguntar y va a
+/// mandar siempre, sin que nada lo delate salvo la factura.
+///
+/// Sin [Contexto.portero] se comporta **exactamente como antes**: mide y manda. Ver la nota
+/// de ese campo.
+Future<ResultadoDeMedicion> enviarMedicion(
+  Contexto c,
+  String modulo,
+  Map<String, Object?> medido,
+) async {
+  final id = c.sujetoId;
+  if (id == null) {
+    return const ResultadoDeMedicion(
+        midio: false, transmitio: false, detalle: 'todavía no entró nadie');
+  }
+  if (medido.isEmpty) {
+    return const ResultadoDeMedicion(
+      midio: false,
+      transmitio: false,
+      detalle: 'el sistema no devolvió ninguna medición',
+      problema: 'el sistema no devolvió ninguna medición',
+    );
+  }
+
+  final portero = c.portero;
+  if (portero != null) {
+    final decision = await portero.decidir(modulo: modulo, medido: medido);
+    if (!decision.mandar) {
+      // Midió bien; simplemente no había nada nuevo que contar. NO es un problema, y por
+      // eso `problema` queda en nulo: marcarlo como fallo haría que el diagnóstico muestre
+      // en rojo el caso que la política viene a buscar.
+      return ResultadoDeMedicion(
+        midio: true,
+        transmitio: false,
+        detalle: 'no se transmitió: ${decision.porQue}',
+      );
+    }
+  }
+
+  final descartadoPorQue = await c.api.reportarSenales(
+    sujetoId: id,
+    instalacionId: c.instalacionId,
+    modulo: modulo,
+    senales: medido,
+  );
+
+  // 🔴 UN 200 NO ES UN «SE GUARDÓ». El servicio acepta y descarta cuando el comercio tiene
+  // el módulo apagado, y lo dice en el cuerpo. Si se descartó, la huella NO se anota: hacerlo
+  // haría creer que el servidor tiene algo que no tiene, y ese campo no se volvería a mandar
+  // hasta la resincronización de los siete días.
+  if (descartadoPorQue != null) {
+    return ResultadoDeMedicion(
+      midio: true,
+      transmitio: false,
+      detalle: 'el servicio no lo guardó: $descartadoPorQue',
+      problema: 'el servicio no lo guardó: $descartadoPorQue',
+    );
+  }
+
+  await portero?.anotarQueLlego(modulo: modulo, medido: medido);
+  return ResultadoDeMedicion(
+    midio: true,
+    transmitio: true,
+    detalle: 'transmitido: ${medido.length} campos',
+  );
 }
 
 /// CÓMO ESTÁ UN MÓDULO — para el diagnóstico, en castellano.

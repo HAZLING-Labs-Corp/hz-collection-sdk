@@ -9,6 +9,7 @@ import 'package:flutter/material.dart'
 
 import 'api_client.dart';
 import 'campanita.dart';
+import 'comportamiento/comportamiento.dart';
 import 'decision_de_dibujo.dart';
 import 'device_info.dart';
 import 'diagnostico.dart';
@@ -29,6 +30,8 @@ import 'push_message.dart';
 import 'remote_config.dart';
 import 'ruta.dart';
 import 'sujeto.dart';
+import 'transmision/huella_local.dart';
+import 'transmision/politica_de_transmision.dart';
 
 /// Manejador de segundo plano.
 ///
@@ -145,6 +148,29 @@ class AkPush {
   /// El portero no depende de nada del arranque, así que se construye ya: el
   /// callback se puede registrar antes de `init()` sin que nada lo pise.
   final PorteroDeDibujo _portero = PorteroDeDibujo();
+
+  /// LA POLÍTICA DE TRANSMISIÓN — qué se manda y cuándo. Ver
+  /// `transmision/politica_de_transmision.dart`.
+  ///
+  /// Se construye acá y no en `init()` porque no depende de nada del arranque, y porque
+  /// `AkPush.formulario(...)` tiene que poder llamarse desde el `initState` de una pantalla
+  /// sin importar si el SDK ya terminó de arrancar: lo que se anote antes queda en la cola
+  /// igual, y sale cuando haya con quién hablar.
+  PoliticaDeTransmision _politicaDeTransmision = PoliticaDeTransmision.porOmision;
+  PorteroDeEnvio _porteroDeEnvio = PorteroDeEnvio();
+  Comportamiento _comportamiento = Comportamiento();
+
+  /// Cambia la política antes de que nada la haya usado. Se llama sólo desde `init()`, y
+  /// sólo si quien integra pasó una: sin eso, rige la de omisión y nadie ve un cambio.
+  void _adoptarPolitica(PoliticaDeTransmision p) {
+    if (identical(p, _politicaDeTransmision)) return;
+    _politicaDeTransmision = p;
+    _porteroDeEnvio = PorteroDeEnvio(politica: p);
+    // El anterior suelta el gancho del ciclo de vida o quedarían dos escuchando, y cada
+    // apertura de la aplicación anotaría dos `SESION_ABRE`.
+    _comportamiento.soltar();
+    _comportamiento = Comportamiento(politica: p);
+  }
 
   String? _token;
   String? _userId;
@@ -348,6 +374,10 @@ class AkPush {
         instalacionId: await _almacen.leerOCrearInstalacionId(),
         sujetoId: id,
         config: _config,
+        // 🔴 ES LA ÚNICA LÍNEA QUE HACE QUE LA POLÍTICA EXISTA PARA LOS MÓDULOS. Sin ella
+        // los tres se comportan como antes: miden y mandan, siempre. Con ella preguntan
+        // primero, y una medición idéntica a la anterior no gasta una llamada.
+        portero: _porteroDeEnvio,
       ));
     } catch (_) {
       // Ninguna señal vale romperle el inicio de sesión a nadie.
@@ -408,6 +438,57 @@ class AkPush {
       }
     }
   }
+
+  // ── El comportamiento dentro de la propia aplicación ─────────────────────
+
+  /// EMPIEZA A MIRAR UN FORMULARIO — cuánto tarda en llenarlo y cuántas veces lo deja.
+  ///
+  /// ```dart
+  /// final f = AkPush.formulario('solicitud');      // en initState
+  /// await f.abrir();
+  /// TextField(controller: f.campo('cedula').controlador,
+  ///           focusNode:  f.campo('cedula').foco)
+  /// await f.enviar();                               // al apretar Enviar
+  /// f.dispose();                                    // en dispose
+  /// ```
+  ///
+  /// 🔴 **No se puede detectar solo y por eso se declara.** El SDK no tiene forma de saber
+  /// qué pantalla es «la solicitud» ni cuál de los botones la envía; adivinarlo sería medir
+  /// cualquier cosa y llamarla tiempo de llenado.
+  ///
+  /// 🔴 **Nunca viaja el contenido de un campo.** Ni el texto, ni su largo, ni un hash. Se
+  /// mide *que* pegó la cédula, nunca *qué* cédula pegó. Ver `comportamiento/evento.dart`.
+  ///
+  /// Se puede llamar antes de que `init()` termine: lo que se anote queda en la cola del
+  /// teléfono y sale cuando haya con quién hablar.
+  static ObservadorDeFormulario formulario(String nombre) =>
+      _yo._comportamiento.formulario(nombre);
+
+  /// Cómo está el módulo de comportamiento: cuántos eventos esperan, cuándo salió el último
+  /// lote, y por qué no salió si no salió.
+  static Future<EstadoDelComportamiento> estadoDelComportamiento() =>
+      _yo._comportamiento.estado();
+
+  /// MANDA AHORA LO QUE HAY EN LA COLA. Devuelve cuántos eventos salieron.
+  ///
+  /// 🔴 ES LA EXCEPCIÓN, NO EL CAMINO. La política es que el lote sale **al abrir la
+  /// aplicación** y nada más: una llamada de red por medición se nota en la batería, y el
+  /// SDK ya la hace sola en `init()`. Esto existe para el caso en que el comercio necesita
+  /// el dato en el momento —recién enviada una solicitud de crédito, con el analista
+  /// esperando del otro lado— y no puede aguardar a la próxima apertura.
+  ///
+  /// Llamarla por cada evento devuelve el SDK a lo que hacía antes de que existiera la
+  /// política, y con más pasos.
+  static Future<int> transmitirComportamiento() => _yo._comportamiento.transmitir();
+
+  /// La política de transmisión vigente: los cinco números y sus motivos.
+  static PoliticaDeTransmision get politicaDeTransmision => _yo._politicaDeTransmision;
+
+  /// Lo último que la política decidió de cada módulo, con el motivo en castellano.
+  /// «no se transmitió: nada cambió» es una respuesta correcta, no una falla — y sin esto
+  /// se vería igual que no haber medido.
+  static Map<String, DecisionDeEnvio> get ultimasDecisiones =>
+      Map.unmodifiable(_yo._porteroDeEnvio.ultimaDecision);
 
   // ── El ciclo de sesión ──────────────────────────────────────────────────
 
@@ -490,6 +571,65 @@ class AkPush {
 
   /// La política que configuró el comercio para la ubicación.
   static PoliticaDeUbicacion get politicaDeUbicacion => _yo._politicaDeUbicacion;
+
+  // ── Lectura continua ─────────────────────────────────────────────────────
+  //
+  // 🔴 LOS TRES MODOS SON TRES COSAS DISTINTAS. Ver [ModoDeLectura] antes de tocar nada:
+  // uno no pide permiso, otro tampoco, y el tercero exige permisos que **este paquete no
+  // declara** y que sacan de Google Play a una financiera que los declare.
+
+  /// Qué está corriendo AHORA. **No es lo que el comercio pidió**: si pidió segundo plano y
+  /// la aplicación no declaró el permiso, acá dice [ModoDeLectura.alEntrar] y
+  /// [porQueNoHayLecturaContinua] dice por qué.
+  static ModoDeLectura get modoDeUbicacion => _yo._ubicacion.modoActivo;
+
+  /// Lo que el comercio pidió, aunque no se haya podido.
+  static ModoDeLectura get modoDeUbicacionPedido => _yo._ubicacion.modoPedido;
+
+  /// Por qué el modo pedido no está corriendo. `null` = está corriendo.
+  static String? get porQueNoHayLecturaContinua =>
+      _yo._ubicacion.modoActivo == _yo._ubicacion.modoPedido
+          ? null
+          : _yo._ubicacion.ultimoMotivo;
+
+  /// ¿LA APLICACIÓN ANFITRIONA DECLARÓ LO QUE HACE FALTA PARA EL SEGUNDO PLANO?
+  ///
+  /// 🔴 Si devuelve `false`, el modo de segundo plano **no va a andar por más que el
+  /// comercio lo prenda en la consola**, y lo que falta está en [faltaDeclararParaElFondo].
+  /// Se declara en el manifiesto de la APLICACIÓN, nunca en el del SDK: ver el README.
+  static Future<bool> get sePuedeUbicacionEnSegundoPlano =>
+      _yo._ubicacion.sePuedeEnSegundoPlano;
+
+  /// Qué renglones le faltan al manifiesto de la aplicación. Sólo tiene valor después de
+  /// consultar [sePuedeUbicacionEnSegundoPlano].
+  static List<String> get faltaDeclararParaElFondo => _yo._ubicacion.faltaDeclarar;
+
+  /// ¿La persona dio el «Permitir siempre»? Es OTRO permiso que el de la zona.
+  static Future<bool> get tieneUbicacionSiempre => _yo._ubicacion.tieneSiempre;
+
+  /// CUÁNTAS LECTURAS DEJÓ ESTA SESIÓN, y cuántas de ellas salieron hacia el servicio.
+  ///
+  /// Existe para poder **medir** el efecto de un modo en vez de creerlo. `enviadas` es
+  /// siempre menor o igual: una lectura que llega antes del intervalo se descarta acá y
+  /// nunca toca la red.
+  static ({int leidas, int enviadas}) get lecturasDeUbicacionDeLaSesion => (
+        leidas: _yo._ubicacion.lecturasDeLaSesion,
+        enviadas: _yo._ubicacion.enviosDeLaSesion,
+      );
+
+  /// Corta la lectura continua y vuelve al modo de siempre. La aplicación puede llamarla
+  /// cuando quiera —una pantalla de «pausar el seguimiento», por ejemplo—; el SDK la llama
+  /// sola al cerrar sesión.
+  static Future<void> detenerLecturaContinua() =>
+      _yo._ubicacion.detenerContinuo();
+
+  /// LE OFRECE EL «SIEMPRE», CON LA SEGUNDA HOJA. Devuelve si quedó concedido.
+  ///
+  /// El SDK la llama solo al iniciar sesión cuando el comercio puso el modo en
+  /// [ModoDeLectura.enSegundoPlano]. Esta versión pública es para el comercio que prefiera
+  /// pedirlo en su propio momento.
+  static Future<bool> ofrecerUbicacionSiempre([BuildContext? context]) =>
+      _yo._ofrecerSiempre(context: context, forzar: true);
 
   /// LE OFRECE A LA PERSONA COMPARTIR SU ZONA, CON EL MODAL DEL SDK.
   ///
@@ -636,6 +776,142 @@ class AkPush {
     }
   }
 
+  /// LA SEGUNDA PREGUNTA — «SIEMPRE» — CON SU PROPIA HOJA Y SU PROPIO RELOJ.
+  ///
+  /// ══ 🔴 POR QUÉ NO SE PIDE JUNTO CON LA PRIMERA ══
+  ///
+  /// Porque no se puede. Desde Android 11 el sistema **no muestra** el diálogo de «permitir
+  /// siempre» a una aplicación que no tenga ya el de «mientras se usa», y aun teniéndolo, lo
+  /// que abre es la pantalla de Ajustes para que la persona lo elija a mano. iOS 13+ obliga
+  /// a la misma secuencia. Pedir los dos juntos no es una mala práctica: es una pantalla que
+  /// no aparece.
+  ///
+  /// Y aunque se pudiera, no se haría: son dos preguntas de tamaño distinto. «Mi zona
+  /// mientras uso la aplicación» y «mi zona todo el día» no se contestan igual, y meterlas
+  /// en un solo modal es la forma de conseguir un sí que la persona no dio.
+  ///
+  /// `forzar` distingue las dos entradas, igual que en [_ofrecerUbicacion]: la automática
+  /// respeta el reloj de reinsistencia, la que pide la aplicación no.
+  Future<bool> _ofrecerSiempre({
+    BuildContext? context,
+    required bool forzar,
+  }) async {
+    try {
+      if (await _ubicacion.tieneSiempre) return true;
+
+      // 🔴 EL ORDEN NO ES NEGOCIABLE. Sin el permiso de uso, esto no muestra nada.
+      if (!await _ubicacion.concedido) return false;
+
+      // Y si la aplicación no lo declaró, la hoja sería una promesa que el sistema no puede
+      // cumplir: la persona acepta, se abren los Ajustes, y la opción «Permitir siempre»
+      // sencillamente no está ahí.
+      if (!await _ubicacion.sePuedeEnSegundoPlano) {
+        assert(() {
+          debugPrint(
+            '[collection] No se ofrece el «siempre»: la aplicación no declaró '
+            '${_ubicacion.faltaDeclarar.join(", ")}. Se declara en el manifiesto de la '
+            'APLICACIÓN, no en el del SDK. Ver el README, «Ubicación continua».',
+          );
+          return true;
+        }());
+        return false;
+      }
+
+      if (!forzar) {
+        final desde = await _almacen.desdeLaUltimaOfertaDeSiempre();
+        if (desde != null &&
+            desde.inDays < _politicaDeUbicacion.reintentarCadaDias) {
+          return false;
+        }
+      }
+
+      // Se anota antes de mostrar, por lo mismo que la primera oferta: si la persona mata la
+      // aplicación con la hoja abierta, no se le vuelve a aparecer en cada arranque.
+      await _almacen.guardarOfertaDeSiempre(DateTime.now());
+
+      final ctx = context ?? navegador.currentContext;
+      if (ctx == null || !ctx.mounted) {
+        assert(() {
+          debugPrint(
+            '[collection] El comercio pidió ubicación en segundo plano, pero el SDK no '
+            'tiene dónde dibujar la segunda hoja. Agregá «navigatorKey: AkPush.navegador» '
+            'a tu MaterialApp, o llamá a AkPush.ofrecerUbicacionSiempre(context) vos mismo.',
+          );
+          return true;
+        }());
+        return false;
+      }
+
+      final textos = _politicaDeUbicacion.textosDeSiempre;
+      final quiere = await ModalDeUbicacion.mostrarSiempre(ctx, textos: textos);
+
+      // Categoría propia: «aceptó la zona» y «aceptó que la midan todo el día» son dos
+      // consentimientos distintos y no pueden quedar guardados como el mismo. Si mañana
+      // alguien reclama, lo que hay que poder mostrar es qué texto tuvo delante para CADA
+      // uno.
+      final queLeyo = '${textos.titulo}\n${textos.cuerpo}';
+      await _anotarConsentimiento(
+        categoria: 'ubicacion_siempre',
+        concedido: quiere,
+        textoMostrado: queLeyo,
+      );
+      if (!quiere) return false;
+
+      final concedido = await _ubicacion.pedirSiempre();
+      if (!concedido) {
+        // Aceptó la hoja y después no eligió «Permitir siempre» en los Ajustes. Cuenta como
+        // un «no»: el consentimiento vale por lo que terminó pasando.
+        await _anotarConsentimiento(
+          categoria: 'ubicacion_siempre',
+          concedido: false,
+          textoMostrado: queLeyo,
+        );
+      }
+      return concedido;
+    } catch (_) {
+      // Nunca tumba nada, por lo mismo que todo lo demás de este módulo.
+      return false;
+    }
+  }
+
+  /// PRENDE EL MODO DE LECTURA QUE ELIGIÓ EL COMERCIO.
+  ///
+  /// 🔴 SI NO SE PUEDE, SE APAGA Y QUEDA ESCRITO POR QUÉ. Ver
+  /// [Ubicacion.arrancarContinuo]: el motivo va a [Ubicacion.ultimoMotivo] y sale en el
+  /// diagnóstico. El fallo que hay que evitar acá es el comercio que prende «segundo plano»,
+  /// ve el interruptor en verde, espera quince días y no tiene ni una lectura.
+  Future<void> _arrancarLecturaContinua(String userId) async {
+    try {
+      final p = _politicaDeUbicacion;
+      if (!p.activa || p.modo == ModoDeLectura.alEntrar) {
+        await _ubicacion.detenerContinuo();
+        return;
+      }
+
+      // La zona primero, siempre. Sin ella no hay nada que leer en ningún modo.
+      if (!await _ubicacion.concedido) {
+        _ubicacion.modoPedido = p.modo;
+        return;
+      }
+
+      // Y para el fondo, la segunda pregunta. Va acá y no adentro de `arrancarContinuo`
+      // porque pedir un permiso es dibujar una pantalla, y `Ubicacion` no dibuja.
+      if (p.modo == ModoDeLectura.enSegundoPlano &&
+          !await _ubicacion.tieneSiempre) {
+        await _ofrecerSiempre(forzar: false);
+      }
+
+      await _ubicacion.arrancarContinuo(
+        userId: userId,
+        modo: p.modo,
+        cada: p.cada,
+        textos: p.textosDeSiempre,
+      );
+    } catch (_) {
+      // Ninguna lectura vale romperle el inicio de sesión a nadie.
+    }
+  }
+
   /// Lee y manda dónde está, si hay permiso y si pasó el tiempo mínimo.
   ///
   /// Devuelve si mandó algo. Nunca lanza: perder una posición cuesta un dato de
@@ -693,12 +969,20 @@ class AkPush {
     String? url,
     bool pedirPermisoAlIniciar = true,
     PoliticaDeNotificaciones? politicaPorDefecto,
+    /// CUÁNDO SE TRANSMITE LO QUE SE MIDE. Si no se pasa, rige la de omisión: por lote al
+    /// abrir, sólo si algo cambió, y todo igual cada siete días.
+    ///
+    /// El uso previsto es uno solo y es el de volver atrás:
+    /// `politicaDeTransmision: PoliticaDeTransmision.comoEstabaAntes` deja el SDK midiendo
+    /// y mandando siempre, como antes de que la política existiera.
+    PoliticaDeTransmision? politicaDeTransmision,
   }) =>
       _yo._init(
         apiKey: llave,
         baseUrl: url,
         pedirPermisoAlIniciar: pedirPermisoAlIniciar,
         politicaPorDefecto: politicaPorDefecto,
+        politicaDeTransmision: politicaDeTransmision,
       );
 
   Future<void> _init({
@@ -706,7 +990,11 @@ class AkPush {
     String? baseUrl,
     bool pedirPermisoAlIniciar = true,
     PoliticaDeNotificaciones? politicaPorDefecto,
+    PoliticaDeTransmision? politicaDeTransmision,
   }) async {
+    // Antes que nada: la política tiene que estar puesta antes de que se anote el primer
+    // evento, o el primero se mediría con una y el resto con otra.
+    if (politicaDeTransmision != null) _adoptarPolitica(politicaDeTransmision);
     // La que declara la aplicación rige mientras el servicio no mande la suya.
     // Cuando la mande, gana la del servidor: la decisión es del comercio, y el
     // sentido de servirla es que la cambie sin publicar una versión nueva.
@@ -776,6 +1064,27 @@ class AkPush {
       // La instalación nace acá: sin token —todavía no se pidió permiso— y sin
       // sujeto —todavía no entró nadie—.
       await _registrarInstalacion(datos);
+
+      // ══ EL COMPORTAMIENTO: SE ABRE LA SESIÓN Y SALE EL LOTE DE LA VEZ PASADA ═══════
+      //
+      // 🔴 ACÁ Y NO MÁS ABAJO, a propósito: abajo está el `return` de cuando no hay
+      // configuración, y el comportamiento tiene que medirse igual. Un comercio al que le
+      // falta el paquete registrado —o que todavía no tiene Firebase— pierde los avisos,
+      // no la serie de comportamiento, que es lo único que no depende de nadie más.
+      //
+      // 🔴 Y NO SE ESPERA. Es lo único que se hace con la red en este punto del arranque,
+      // y el arranque es la parte que la persona mira esperando. Si no hay señal, los
+      // eventos se quedan en el teléfono y salen la próxima vez: la cola vive en el disco
+      // justamente para eso. Que falle no puede costar un milisegundo de pantalla.
+      await _comportamiento.arrancar(
+        api: _api!,
+        instalacionId: await _almacen.leerOCrearInstalacionId(),
+        config: config,
+        // Quien haya quedado logueado sigue estándolo hasta que cierre sesión, así que el
+        // `SESION_ABRE` de esta apertura es suyo. Ver la nota de `sujetoConocido`.
+        sujetoConocido: await _almacen.leerUsuario(),
+      );
+      unawaited(_comportamiento.transmitir());
 
       // 🔴 La cuenta cambió. Un token de FCM solo vale dentro del proyecto que
       // lo emitió, así que el que tenemos guardado ya no sirve para nada — y si
@@ -1392,6 +1701,10 @@ class AkPush {
 
     _userId = userId;
     await _almacen.guardarUsuario(userId);
+    // Desde acá, lo que se anote de comportamiento es de esta persona. Lo anotado ANTES no
+    // se le atribuye hacia atrás: la aplicación se abre antes de que nadie entre, y esos
+    // eventos son de la instalación. El servicio ya sabe a qué sujeto pertenece cada una.
+    _comportamiento.entroElSujeto(userId);
 
     // ── LA UBICACIÓN, DESPUÉS DE TODO LO DEMÁS ────────────────────────────────────
     //
@@ -1447,6 +1760,17 @@ class AkPush {
     // en cada inicio de sesión no gasta batería ni multiplica lecturas: en la mayoría
     // de las llamadas devuelve `false` sin tocar el GPS.
     unawaited(_ubicacion.reportarSiCorresponde(userId));
+
+    // 🔴 Y SI EL COMERCIO PIDIÓ LECTURA CONTINUA, SE PRENDE ACÁ.
+    //
+    // Después de la oferta de la zona y no antes: los dos modos continuos necesitan el
+    // permiso de uso concedido, y el de fondo necesita además la segunda pregunta, que no se
+    // puede hacer sin la primera. Encolarlo antes sería arrancar un flujo que el sistema
+    // corta en la primera lectura.
+    //
+    // Sin esperar, como todo lo de este bloque: el inicio de sesión no se cuelga detrás de
+    // un modal ni de un servicio que levanta.
+    unawaited(_arrancarLecturaContinua(userId));
 
     return ResultadoDeSesion(
       puedeRecibir: concedido && _token != null && _registrado,
@@ -1570,6 +1894,16 @@ class AkPush {
     _userId = null;
     _registrado = false;
     _registradoEl = null;
+
+    // 🔴 SE CORTA LA LECTURA CONTINUA, Y ESTO NO ES UNA LIMPIEZA COSMÉTICA. Un flujo que
+    // sobrevive al cierre de sesión sigue mandando posiciones con el identificador de quien
+    // ya se fue —o del siguiente que entre—, y en segundo plano lo hace con un aviso fijo en
+    // la barra de alguien que cerró la aplicación. Es el peor final posible de este módulo.
+    await _ubicacion.detenerContinuo();
+
+    // Lo que se anote desde ahora es de la instalación y de nadie más. Lo ya encolado
+    // conserva el sujeto que tenía: pertenece a quien lo hizo, no a quien entre después.
+    _comportamiento.salioElSujeto();
     await _almacen.olvidarSesion();
     await Presentador.instancia.retirarTodos();
 
@@ -1621,6 +1955,14 @@ class AkPush {
                   servicioPrendido: await _ubicacion.servicioPrendido,
                   ultimoEnvio: _ubicacion.ultimoEnvio,
                   ultimoMotivo: _ubicacion.ultimoMotivo,
+                  // 🔴 Los dos modos y lo que falta declarar. Sin esto, un comercio con el
+                  // segundo plano apagado por un renglón que le falta al manifiesto se ve en
+                  // el diagnóstico exactamente igual que uno que nunca lo pidió.
+                  modoPedido: _ubicacion.modoPedido.name,
+                  modoActivo: _ubicacion.modoActivo.name,
+                  faltaDeclarar: _ubicacion.faltaDeclarar,
+                  lecturasDeLaSesion: _ubicacion.lecturasDeLaSesion,
+                  enviosDeLaSesion: _ubicacion.enviosDeLaSesion,
                 )
               : null);
 

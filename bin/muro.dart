@@ -331,10 +331,29 @@ String? _paqueteDe(String xml) =>
 /// Se hace con una expresión regular y no con un parser de XML a propósito: el
 /// manifiesto fusionado trae comentarios, atributos de herramientas y espacios de
 /// nombres que a un parser estricto lo hacen fallar, y acá sólo hacen falta los nombres.
+///
+/// 🔴 LOS COMENTARIOS SE SACAN PRIMERO, Y ESO ES UN ARREGLO, NO UNA OPTIMIZACIÓN.
+///
+/// Hasta el 2026-09-05 la expresión corría sobre el archivo entero, así que **un permiso
+/// nombrado dentro de un comentario contaba como declarado**. Se descubrió el mismo día, al
+/// documentar en el manifiesto de este paquete los tres permisos de la ubicación en segundo
+/// plano —para que el integrador sepa cuáles son y por qué NO van ahí—: el muro dio rojo
+/// sobre un archivo que no declara ni uno.
+///
+/// Importa más de lo que parece. El caso normal de un integrador es dejar un
+/// `<!-- <uses-permission ...> -->` comentado mientras decide, y ahí el muro lo acusaría de
+/// declarar algo que el APK no lleva. Android ignora los comentarios al fusionar; el muro
+/// tiene que hacer lo mismo o miente. Y un muro que grita en falso se apaga — es la misma
+/// razón por la que iOS avisa en vez de fallar, unas líneas más abajo.
 Set<String> _permisosDe(String xml) => RegExp(
       r'<uses-permission[^>]*android:name\s*=\s*"([^"]+)"',
       multiLine: true,
-    ).allMatches(xml).map((m) => m.group(1)!).toSet();
+    ).allMatches(_sinComentarios(xml)).map((m) => m.group(1)!).toSet();
+
+/// Borra los comentarios XML —`<!-- … -->`, también los de varias líneas—. Ver la nota de
+/// [_permisosDe].
+String _sinComentarios(String xml) =>
+    xml.replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '');
 
 /// Busca el manifiesto fusionado de la APLICACIÓN, que es el único que importa.
 ///

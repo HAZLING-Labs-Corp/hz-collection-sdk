@@ -5,6 +5,7 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.net.ConnectivityManager
@@ -89,6 +90,7 @@ class SenalesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     override fun onMethodCall(call: MethodCall, resultado: MethodChannel.Result) {
         when (call.method) {
             "medir" -> resultado.success(medir())
+            "puedeSegundoPlano" -> resultado.success(puedeSegundoPlano())
             else -> resultado.notImplemented()
         }
     }
@@ -103,6 +105,60 @@ class SenalesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         putAll(huellaDigital())
         putAll(canalesAlcanzables())
         putAll(entregabilidad())
+    }
+
+    /**
+     * ¿LA APLICACIÓN ANFITRIONA DECLARÓ LO QUE HACE FALTA PARA LEER LA UBICACIÓN EN SEGUNDO
+     * PLANO?
+     *
+     * 🔴 NO PIDE NADA Y NO LEE NADA DE LA PERSONA. Lee el manifiesto FUSIONADO de la propia
+     * aplicación —`PackageManager.GET_PERMISSIONS`, API pública, sin permiso— y contesta qué
+     * falta. Es la única forma honesta de que el SDK sepa si puede usar un permiso que
+     * **él no declara y no va a declarar**: declararlo acá se lo inyectaría a toda
+     * aplicación que instale el paquete, y para una financiera eso es el camino corto a que
+     * Google le saque la app de Play.
+     *
+     * Sin esto, un comercio prende «segundo plano» en su consola, ve el interruptor en
+     * verde, espera quince días y no mide nada. Con esto, el modo se apaga solo y dice
+     * exactamente qué renglón le falta al manifiesto.
+     *
+     * Los tres que se miran, y por qué:
+     *
+     *  · `ACCESS_BACKGROUND_LOCATION` — el permiso en sí. Desde Android 10.
+     *  · `FOREGROUND_SERVICE` — `geolocator` levanta un servicio en primer plano para
+     *    sostener las lecturas; su manifiesto declara el servicio, **no el permiso**.
+     *  · `FOREGROUND_SERVICE_LOCATION` — desde Android 14 un servicio de tipo `location`
+     *    exige además este permiso, y sin él el sistema **tira la aplicación abajo** al
+     *    arrancar el servicio. Sólo se exige si la aplicación apunta a 34 o más: a una que
+     *    apunte a 33 pedírselo sería marcar en rojo algo que anda.
+     */
+    private fun puedeSegundoPlano(): Map<String, Any?> {
+        val declarados: Set<String> = intentar {
+            @Suppress("DEPRECATION")
+            contexto.packageManager
+                .getPackageInfo(contexto.packageName, PackageManager.GET_PERMISSIONS)
+                .requestedPermissions
+                ?.toSet()
+        } ?: emptySet()
+
+        val faltan = mutableListOf<String>()
+        if (!declarados.contains("android.permission.ACCESS_BACKGROUND_LOCATION")) {
+            faltan.add("android.permission.ACCESS_BACKGROUND_LOCATION")
+        }
+        if (!declarados.contains("android.permission.FOREGROUND_SERVICE")) {
+            faltan.add("android.permission.FOREGROUND_SERVICE")
+        }
+        val apuntaA34 = intentar { contexto.applicationInfo.targetSdkVersion } ?: 0
+        if (Build.VERSION.SDK_INT >= 34 && apuntaA34 >= 34 &&
+            !declarados.contains("android.permission.FOREGROUND_SERVICE_LOCATION")
+        ) {
+            faltan.add("android.permission.FOREGROUND_SERVICE_LOCATION")
+        }
+
+        return mapOf(
+            "sePuede" to faltan.isEmpty(),
+            "faltan" to faltan,
+        )
     }
 
     /** Corre una lectura y se traga el fallo. Lo que no se pudo leer no aparece. */
@@ -234,14 +290,40 @@ class SenalesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             ?: return@buildMap
         val todos = intentar { sm.getSensorList(Sensor.TYPE_ALL) } ?: return@buildMap
 
+        /**
+         * 🔴 NO ALCANZA CON `getSensorList(TYPE_ALL)` — corregido el 2026-09-05.
+         *
+         * Juan lo vio en su propio teléfono: un Honor con giroscopio, y la señal decía que
+         * no lo tenía. Y no era un detalle cosmético — `sen_hay_giroscopio` en falso le sumó
+         * **+10 puntos al portón de fraude**, sobre un teléfono real y sano.
+         *
+         * `getSensorList(TYPE_ALL)` NO devuelve todos los sensores: deja afuera los de
+         * despertar y, sobre todo, **los fabricantes filtran esa lista**. Huawei y Honor son
+         * los casos conocidos. La forma documentada de preguntar «¿este aparato tiene tal
+         * sensor?» es `getDefaultSensor(tipo)`, que resuelve contra el HAL y no contra una
+         * lista que el fabricante armó.
+         *
+         * Se consultan las dos y se toma el O lógico: si CUALQUIERA de los dos caminos lo
+         * ve, el sensor existe. Un falso negativo acá le cuesta puntos a una persona real;
+         * un falso positivo sólo le quita puntos a un emulador, que ya cae por otras diez
+         * señales. La duda se resuelve para el lado de no castigar a nadie.
+         */
+        fun hay(tipo: Int): Boolean =
+            (intentar { sm.getDefaultSensor(tipo) } != null) || todos.any { it.type == tipo }
+
         put("sen_cantidad", todos.size)
-        put("sen_hay_acelerometro", todos.any { it.type == Sensor.TYPE_ACCELEROMETER })
-        put("sen_hay_giroscopio", todos.any { it.type == Sensor.TYPE_GYROSCOPE })
-        put("sen_hay_magnetometro", todos.any { it.type == Sensor.TYPE_MAGNETIC_FIELD })
-        put("sen_hay_proximidad", todos.any { it.type == Sensor.TYPE_PROXIMITY })
-        put("sen_hay_luz", todos.any { it.type == Sensor.TYPE_LIGHT })
-        put("sen_hay_barometro", todos.any { it.type == Sensor.TYPE_PRESSURE })
-        put("sen_hay_paso", todos.any { it.type == Sensor.TYPE_STEP_COUNTER })
+        put("sen_hay_acelerometro", hay(Sensor.TYPE_ACCELEROMETER))
+        /**
+         * El giroscopio además admite una variante SIN CALIBRAR (`TYPE_GYROSCOPE_UNCALIBRATED`),
+         * y hay aparatos que exponen sólo ésa. Para la pregunta que importa —«¿este teléfono
+         * puede saber que lo giraron?»— las dos sirven igual.
+         */
+        put("sen_hay_giroscopio", hay(Sensor.TYPE_GYROSCOPE) || hay(Sensor.TYPE_GYROSCOPE_UNCALIBRATED))
+        put("sen_hay_magnetometro", hay(Sensor.TYPE_MAGNETIC_FIELD) || hay(Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED))
+        put("sen_hay_proximidad", hay(Sensor.TYPE_PROXIMITY))
+        put("sen_hay_luz", hay(Sensor.TYPE_LIGHT))
+        put("sen_hay_barometro", hay(Sensor.TYPE_PRESSURE))
+        put("sen_hay_paso", hay(Sensor.TYPE_STEP_COUNTER))
         // Cuántos dicen ser del fabricante genérico de Android: en un teléfono real casi
         // ninguno; en un emulador, todos.
         put("sen_genericos", todos.count {
@@ -457,7 +539,25 @@ class SenalesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "canal_instagram" to "com.instagram.android",
             "canal_signal" to "org.thoughtcrime.securesms",
             "canal_sms_rcs" to "com.google.android.apps.messaging",
-            "canal_gmail" to "com.google.android.gm"
+            "canal_gmail" to "com.google.android.gm",
+
+            // ── Vida económica — agregadas el 2026-09-05 ────────────────────────────
+            //
+            // Las de arriba dicen POR DÓNDE mandarle un mensaje. Éstas dicen algo de la
+            // persona, que es lo que un puntaje necesita.
+            //
+            // 🔴 Un nombre de paquete mal escrito NO falla: devuelve `false` para
+            // siempre. La señal diría «no tiene Mercado Pago» de toda la cartera y nadie
+            // se enteraría nunca. Antes de darle peso a cualquiera de éstas en un modelo,
+            // hay que verla en `true` en al menos un teléfono real que sí la tenga.
+            "app_mapas" to "com.google.android.apps.maps",
+            "app_viajes" to "com.ubercab",
+            "app_mercadolibre" to "com.mercadolibre",
+            "app_mercadopago" to "com.mercadopago.wallet",
+            "app_binance" to "com.binance.dev",
+            "app_zelle" to "com.zellepay.zelle",
+            "app_netflix" to "com.netflix.mediaclient",
+            "app_spotify" to "com.spotify.music"
         )
         val pm = contexto.packageManager
         for ((clave, paquete) in apps) {

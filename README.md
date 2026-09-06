@@ -191,6 +191,140 @@ de verdad no existen, no porque el teléfono sea raro. `autenticidad` lo dice ap
 
 ---
 
+## El comportamiento dentro de tu propia aplicación
+
+Es lo que pasa **en tu pantalla**: a qué hora abre la persona, cuánto tarda en llenar la
+solicitud, cuántas veces la abandona y vuelve, y si pega la cédula o la escribe.
+
+🔴 **No pide un solo permiso, y no puede pedirlo: no hay nada que pedir.** No se está leyendo
+nada de nadie más — es tu aplicación, tu formulario y tu campo de texto. Es la mitad más valiosa
+del colector para quien presta plata, porque es justo lo que quedó del otro lado de la puerta
+que Google cerró en 2019 con los SMS y el registro de llamadas.
+
+### 🔴 Lo que NUNCA se captura, y es un límite duro
+
+**El contenido de lo que la persona escribe.** Se mide *que pegó la cédula*, nunca *qué cédula
+pegó*. Se mide *cuánto tardó*, nunca *qué escribió*. En concreto, y para que no haya que
+adivinarlo:
+
+| lo que se captura | lo que **no** se captura |
+|---|---|
+| que el campo se llenó de un golpe (pegado) o tecleando | el texto, entero o en pedazos |
+| cuántas veces lo corrigió | el **largo** de lo que escribió |
+| cuánto tardó, en milisegundos | un hash del contenido — un hash de una cédula *es* una cédula |
+| el **nombre** del campo, que lo ponés vos (`cedula`) | lo que la persona puso adentro |
+
+Hay una prueba que lo comprueba escribiendo y pegando una cédula de verdad y buscando cualquier
+pedazo de ella en todo lo que el SDK guardaría: `test/comportamiento_test.dart`.
+
+### Cinco líneas y el formulario queda medido
+
+```dart
+class _SolicitudState extends State<Solicitud> {
+  final f = AkPush.formulario('solicitud');   // ① se declara
+
+  @override void initState() { super.initState(); f.abrir(); }   // ② entró
+  @override void dispose()   { f.dispose(); super.dispose(); }   // ⑤ se fue
+
+  @override Widget build(_) => Column(children: [
+    TextField(                                                    // ③ un campo
+      controller: f.campo('cedula').controlador,
+      focusNode:  f.campo('cedula').foco,
+    ),
+    FilledButton(onPressed: () => f.enviar(), child: Text('Enviar')),  // ④ lo mandó
+  ]);
+}
+```
+
+El SDK **no puede adivinar** qué pantalla es «la solicitud» ni cuál de los botones la envía: por
+eso se declara. La sesión —abrir, cerrar, cuánto duró— sí sale sola, del ciclo de vida.
+
+Los siete tipos de evento son fijos y los comparte con el servicio:
+`SESION_ABRE · SESION_CIERRA · FORMULARIO_ABRE · FORMULARIO_ENVIA · FORMULARIO_ABANDONA ·
+CAMPO_PEGADO · CAMPO_ESCRITO`.
+
+> **Cómo se sabe que pegó sin leer lo que pegó:** mirando el largo del texto. Escribir agrega un
+> carácter por vez; pegar los agrega todos de golpe. En un campo de texto libre con sugerencias
+> del teclado, tocar una sugerencia inserta una palabra entera y se ve igual que un pegado — en
+> los campos donde esto importa (cédula, monto, teléfono) el teclado es numérico y no se
+> confunde. Para un campo de nombre, la señal es más floja y hay que leerla como tal.
+
+---
+
+## La política de transmisión: qué sale del teléfono, y cuándo
+
+Hasta esta versión el SDK **medía y mandaba en el mismo acto**, siempre. Medido en el emulador el
+2026-09-04, contando peticiones: **cinco llamadas por sesión, 3.906 bytes**, de los cuales 3.096
+eran dos mediciones que en la segunda sesión decían exactamente lo mismo que en la primera.
+
+Ahora hay cinco decisiones, y ninguna hay que configurar:
+
+| | qué hace | el número |
+|---|---|---|
+| **cuándo se mide** | al abrir la aplicación | igual que antes |
+| **cuándo se transmite** | 🔴 nunca en el momento de medir — se guarda y sale **por lote, al abrir** | 1 llamada por apertura |
+| **qué dispara un envío** | sólo un cambio real | 10 señales de momento no cuentan |
+| **sin conexión** | se acumula y se descarta lo más viejo | 1.000 eventos ó 512 KB |
+| **resincronización** | se manda todo igual aunque nada haya cambiado | cada 7 días |
+
+Después: **cuatro llamadas por sesión y 1.011 bytes** — y una de esas cuatro es el lote de
+comportamiento, que antes no existía. Las mediciones de señales pasaron de 2 por sesión a 0
+cuando el teléfono no cambió, y vuelven a salir en cuanto cambia algo de verdad.
+
+### 🔴 La trampa de las señales de momento
+
+De las 105 señales, **diez cambian en cada medición**: la hora local, el día de la semana, si la
+pantalla está encendida, el nivel de señal, la temperatura y el voltaje de la batería, la
+velocidad de bajada y de subida, las veces que se encendió el teléfono, y la marca de tiempo de
+la ubicación. Si contaran como cambio, el delta nunca estaría vacío y «mandá sólo lo que cambió»
+mandaría **siempre todo**. El sistema parecería andar bien; sólo sería caro — y no daría ningún
+síntoma hasta la factura.
+
+Están declaradas en `senalesDeMomento`, y una prueba fija los diez nombres para que nadie los
+cambie de un solo lado: el servicio tiene la misma lista.
+
+📌 **Y hay dos más, encontrados midiendo el 2026-09-04:** `hd_ram_libre_mb` y
+`hd_ram_en_las_ultimas`. Con el delta ya andando, una sesión sin tocar nada seguía
+transmitiendo las 105 señales enteras — la pantalla lo dijo con todas las letras: *«senales:
+cambiaron 1 campos: hd_ram_libre_mb»*. **Un solo campo alcanzaba para anular el mecanismo
+entero.** Que son momentos lo dicen sus propias fichas: «cuánta memoria tenía libre *al
+medir*». Viven en `momentosQueElBackTodaviaNoTiene`, aparte y no mezclados con los diez, hasta
+que el servicio los agregue de su lado.
+
+### Volver al comportamiento de antes, en una línea
+
+```dart
+await AkPush.init(
+  llave: '…',
+  politicaDeTransmision: PoliticaDeTransmision.comoEstabaAntes,  // mide y manda siempre
+);
+```
+
+### Ver qué está haciendo
+
+```dart
+final e = await AkPush.estadoDelComportamiento();
+// comportamiento: midiendo · 6 en cola · último envío: 4 eventos
+
+AkPush.ultimasDecisiones;
+// {senales: cambiaron 2 campos: cfg_font_scale, cfg_screen_off_timeout,
+//  autenticidad: nada cambió desde la última vez (los momentos no cuentan)}
+
+await AkPush.transmitirComportamiento();   // 🔴 la excepción, no el camino
+```
+
+`transmitirComportamiento()` existe para el caso en que necesitás el dato **en el momento** —
+recién enviada una solicitud, con un analista esperando del otro lado—. Llamarla por cada evento
+devuelve el SDK a lo que hacía antes de que existiera la política, y con más pasos.
+
+### Nada de esto puede impedir que tu aplicación abra
+
+Si no hay red, si la cola está llena, si el almacenamiento del teléfono falla: **la aplicación
+abre igual**. Todo el módulo está envuelto y no propaga nada hacia arriba. Una medición perdida
+es un problema; una aplicación que no abre es otro tamaño de problema.
+
+---
+
 ## Cuando el comercio no tiene Firebase configurado
 
 **El SDK arranca igual y recolecta igual.** Desde el 2026-09-01, que le falte la configuración
@@ -790,6 +924,19 @@ no tenés que llamar nada. `ofrecerUbicacion()` es para el otro momento, `laAppD
 ofrecerla cuando sirve para algo —al abrir el mapa de sucursales— que es cuando más gente
 acepta.
 
+**Comportamiento en tu aplicación**
+
+```dart
+final f = AkPush.formulario('solicitud');   // ver la sección del comportamiento
+f.abrir(); f.enviar(); f.abandonar(); f.dispose();
+f.campo('cedula').controlador               // el TextEditingController, ya observado
+f.campo('cedula').foco                      // el FocusNode, ya observado
+await AkPush.estadoDelComportamiento();     // cuántos esperan, cuándo salió el último lote
+await AkPush.transmitirComportamiento();    // 🔴 la excepción: el lote sale solo al abrir
+AkPush.politicaDeTransmision                // los cinco números
+AkPush.ultimasDecisiones                    // por qué se transmitió cada módulo, o por qué no
+```
+
 **Módulos y diagnóstico**
 
 ```dart
@@ -918,3 +1065,142 @@ await AkPush.reportarUbicacion();   // lee y manda, con freno de 6 horas
 
 Se piden **la zona, no la puerta**, se guardan las últimas 5 posiciones y se descartan a los
 90 días.
+
+---
+
+## Ubicación continua: los tres modos
+
+Desde el 2026-09-05 el comercio elige, desde su consola, **cómo** se lee la ubicación. No es
+«más o menos seguido» de lo mismo: son tres mecanismos distintos, con tres permisos distintos
+y tres costos distintos.
+
+| Modo | Qué hace | Qué permiso exige | Qué pasa si falta |
+|---|---|---|---|
+| `alEntrar` **(por omisión)** | Una lectura cuando la persona abre la app, con freno de 2 h | `ACCESS_COARSE_LOCATION` | No lee nada; `AkPush.reportarUbicacion()` devuelve `false` y el diagnóstico dice por qué |
+| `enPrimerPlano` | Lecturas cada 2 min **mientras la app está abierta**. Se corta sola al irse al fondo | **Ninguno nuevo.** El mismo `ACCESS_COARSE_LOCATION` | Igual que arriba |
+| `enSegundoPlano` | Lecturas cada 30 min **con la app en el fondo**. Aviso fijo en la barra | `ACCESS_BACKGROUND_LOCATION` **+** `FOREGROUND_SERVICE` **+** `FOREGROUND_SERVICE_LOCATION` (Android 14+) | 🔴 **El modo se apaga solo**, escribe por qué en el diagnóstico y sigue leyendo como `alEntrar`. Nunca mide en silencio |
+
+Nadie cambia de comportamiento por actualizar el paquete: si el comercio no configura nada,
+el modo es `alEntrar` y todo funciona como antes.
+
+### 🔴 El SDK NO declara el permiso de segundo plano, y no lo va a declarar
+
+Un permiso escrito en el manifiesto de un paquete se le inyecta a **toda** aplicación que lo
+instale, la use o no. Si `hz_collection_sdk` declarara `ACCESS_BACKGROUND_LOCATION`, se lo
+impondría también a los comercios de crédito — y **la política de préstamos personales de
+Google Play lo prohíbe**. Es de las que sacan la app de la tienda, no de las que piden un
+formulario. Es exactamente el error que se le midió a CredoLab, cuyos paquetes le meten
+`READ_CONTACTS` y `READ_CALENDAR` a cualquiera.
+
+Entonces: **lo declara la aplicación que embebe el SDK**, y el SDK lo usa **sólo si está
+declarado y sólo si el comercio activó el modo**. Una app de préstamos simplemente no lo
+declara y el código se comporta como siempre. `bin/muro.dart` lo comprueba en cada
+compilación:
+
+```bash
+dart run hz_collection_sdk:muro --rubro=prestamoPersonal
+```
+
+### Si tu aplicación SÍ lo necesita: lo que agregás vos
+
+Antes de copiar esto, leé la línea siguiente entera. **Estás aceptando** llenar el Formulario
+de Declaración de Permisos en Play Console, grabar un video de 30 segundos mostrando la
+función, y una revisión manual de Google que se rechaza seguido y que no tiene apelación
+documentada. Los cuatro requisitos, con su fuente, están en la ficha de
+`ACCESS_BACKGROUND_LOCATION` en `lib/src/permisologia/catalogo_de_permisos.dart`.
+
+En `android/app/src/main/AndroidManifest.xml`:
+
+```xml
+<!-- La zona. Este ya lo tenías. -->
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
+<!-- 🔴 Los tres de abajo son SÓLO para el modo `enSegundoPlano`.
+     Si tu rubro es préstamo personal o adelanto de sueldo, NO los pongas:
+     Google Play los veta y te saca la aplicación de la tienda. -->
+<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+```
+
+En iPhone, en `ios/Runner/Info.plist`:
+
+```xml
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>Para saber en qué zona estás incluso cuando la aplicación está cerrada.</string>
+<key>UIBackgroundModes</key>
+<array><string>location</string></array>
+```
+
+Sin cualquiera de esos renglones, CoreLocation **no entrega nada en el fondo y no tira ningún
+error**. El SDK los comprueba y te lo dice.
+
+### Cómo saber si quedó andando
+
+```dart
+// ¿La aplicación declaró lo que hace falta?
+if (!await AkPush.sePuedeUbicacionEnSegundoPlano) {
+  print('Falta declarar: ${AkPush.faltaDeclararParaElFondo}');
+}
+
+AkPush.modoDeUbicacionPedido;          // lo que pidió el comercio
+AkPush.modoDeUbicacion;                // lo que de verdad está corriendo
+AkPush.porQueNoHayLecturaContinua;     // null si están corriendo el mismo
+AkPush.lecturasDeUbicacionDeLaSesion;  // (leidas: 8, enviadas: 3)
+
+await AkPush.detenerLecturaContinua(); // cortarlo desde tu propia pantalla
+```
+
+`AkPush.diagnostico()` muestra lo mismo en una línea, y marca el eslabón de ubicación en
+**ROTO** cuando el modo pedido no arrancó.
+
+### 🔴 Dos cosas que este modo NO hace, y hay que saberlas antes de venderlo
+
+**1 · No sobrevive a que barran la aplicación.** Mientras la actividad viva —la persona apretó
+inicio, apagó la pantalla, está en otra app— las lecturas siguen llegando. Si la barre de las
+recientes, o si el fabricante la mata por batería (Honor, Xiaomi y Huawei lo hacen agresivamente),
+se cortan hasta que la vuelva a abrir. Sostener eso necesitaría un servicio con su propio
+isolate, y ese paquete le inyectaría permisos a **toda** aplicación que instale el SDK: es el
+mismo muro de arriba.
+
+**2 · Los quince días no entran en el servicio, todavía.** El back guarda las últimas **60**
+posiciones por aparato. A 30 minutos son 48 por día, así que esas 60 cubren **25 horas**: un
+día entero, que es la pregunta «cuánto se mueve en el día». Para quince días harían falta 720
+huecos, o que el servicio agregue por día. **Eso se arregla del lado del servicio, no del SDK**
+— bajar la frecuencia para que entren quince días la dejaría en una lectura cada seis horas,
+que es el freno que se acaba de sacar por inútil.
+
+### Cuánto cambia, medido
+
+Medido el 2026-09-05 contra el código real, con el reloj comprimido (un teléfono Honor no
+estaba conectado, así que esto **no** es una medición en hardware). El día simulado son 11
+horas con tres sesiones de 3 minutos —alguien que abre la aplicación tres veces en una
+mañana y después la deja en el bolsillo—:
+
+| Modo | Posiciones enviadas en ese día |
+|---|---|
+| `alEntrar` (lo de hoy) | **1** |
+| `enPrimerPlano`, 2 min | **6** |
+| `enSegundoPlano`, 30 min | **22** |
+
+El 1 no es un error de la medición: el freno de 2 horas es exactamente eso. La segunda y la
+tercera sesión de la mañana caen dentro de la ventana de la primera y no dejan marca. Una sola
+posición no distingue a quien se quedó en su casa de quien cruzó la ciudad — que es toda la
+razón por la que existen los otros dos modos.
+
+### La frecuencia
+
+Configurable por comercio, en la política de ubicación:
+
+| Campo | Por omisión | Piso |
+|---|---|---|
+| `cadaMinutosEnPrimerPlano` | 2 min | 1 min |
+| `cadaMinutosEnSegundoPlano` | **30 min** | 5 min |
+
+**Por qué 30 minutos.** Tres razones y las tres tiran igual: *(a)* Android limita por su cuenta
+a una lectura por hora a las apps en el fondo sin servicio en primer plano, así que 30 min es
+el doble de lo que el sistema considera razonable y lo máximo defendible como «conservador»;
+*(b)* con 60 huecos en el servicio, 30 min cubren exactamente un día; *(c)* hay un aviso fijo
+en la barra de la persona todo el día, y cuanto menos se le caliente el teléfono, más dura el
+permiso. Se lee con `LocationAccuracy.low` —antenas y wifi, **sin GPS**— y con el *wake lock*
+apagado, así que el teléfono duerme entre lecturas.

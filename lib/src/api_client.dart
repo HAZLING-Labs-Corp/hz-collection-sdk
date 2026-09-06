@@ -378,6 +378,47 @@ class AkPushApi {
     return null;
   }
 
+  /// EL COMPORTAMIENTO DENTRO DE LA PROPIA APLICACIÓN, POR LOTE.
+  ///
+  /// 🔴 **POR LOTE Y NO POR EVENTO, y eso es la mitad del valor de esta ruta.** Un
+  /// formulario de ocho campos genera unos veinte eventos; mandarlos de a uno serían veinte
+  /// peticiones mientras la persona escribe, cada una levantando la radio del teléfono. Los
+  /// eventos se guardan en el teléfono y salen todos juntos en la próxima apertura — ver
+  /// `Comportamiento.transmitir`.
+  ///
+  /// ══ EL CONTRATO, Y LO QUE ESTE LADO LE AGREGA ══
+  ///
+  /// El contrato del 2026-09-04 fija el arreglo: `{ eventos: [ { tipo, cuando, ms, datos } ] }`.
+  /// Eso viaja tal cual y no se toca.
+  ///
+  /// 🔴 Al lado van **`sujetoId` e `instalacionId`**, que el contrato no nombra. No es una
+  /// libertad: sin ellos el lote no se puede atribuir a nadie. La llave pública dice de qué
+  /// COMERCIO es la petición, no de qué persona, así que un lote sin sujeto es un lote que
+  /// del otro lado no se puede guardar en ninguna serie. Van en el sobre y no adentro de
+  /// cada evento para no repetir el mismo identificador doscientas veces en un cuerpo.
+  /// **Está anotado para avisarle al frente que construye el back**: si allá se decidió
+  /// leerlo de otro lado, se cambia acá y no al revés.
+  ///
+  /// `sujetoId` puede ser nulo con toda legitimidad: la aplicación se abre antes de que
+  /// nadie inicie sesión, y esos eventos son de la instalación. El servicio ya sabe a qué
+  /// sujeto pertenece una instalación.
+  Future<void> reportarComportamiento({
+    required String instalacionId,
+    required List<Map<String, Object?>> eventos,
+    String? sujetoId,
+  }) async {
+    if (eventos.isEmpty) return;
+    await _pedir(() => _cliente.post(
+          Uri.parse('$baseUrl/api/v1/comportamiento'),
+          headers: _cabeceras,
+          body: jsonEncode({
+            'instalacionId': instalacionId,
+            if (sujetoId != null) 'sujetoId': sujetoId,
+            'eventos': eventos,
+          }),
+        ));
+  }
+
   /// ANOTA LO QUE LA PERSONA DECIDIÓ, CON EL TEXTO QUE TENÍA DELANTE.
   ///
   /// 🔴 MANDA EL TEXTO MOSTRADO, y el servicio rechaza si falta. No es burocracia: el

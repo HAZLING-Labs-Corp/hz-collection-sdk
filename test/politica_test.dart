@@ -86,6 +86,35 @@ void main() {
           AccionDePermiso.pedirAlSistema);
     });
 
+    test('«arranque» que no llegó a preguntar se rescata en el primer login', () {
+      // El defecto que esto cubre: NADIE en el SDK pasa `Disparador.arranque`, así que
+      // un comercio con la política en «arranque» no recibía ningún diálogo nunca.
+      // Visto en el teléfono de Juan el 2026-09-05: entró y tuvo que tocar la campanita.
+      const enArranque = PoliticaDeNotificaciones();
+      expect(decidir(politica: enArranque, disparador: Disparador.login),
+          AccionDePermiso.pedirAlSistema);
+    });
+
+    test('pero si el arranque YA preguntó, el login no vuelve a preguntar', () {
+      // El rescate no puede convertirse en dos diálogos seguidos.
+      const enArranque = PoliticaDeNotificaciones(reintentarCadaDias: 7);
+      expect(
+        decidir(
+          politica: enArranque,
+          disparador: Disparador.login,
+          yaSePregunto: true,
+          desde: const Duration(hours: 1),
+        ),
+        AccionDePermiso.ninguna,
+      );
+    });
+
+    test('el rescate respeta la pregunta blanda del comercio', () {
+      const blandaEnArranque = PoliticaDeNotificaciones(preguntaBlanda: true);
+      expect(decidir(politica: blandaEnArranque, disparador: Disparador.login),
+          AccionDePermiso.mostrarPreguntaBlanda);
+    });
+
     test('con «la app decide», el SDK no pide nada por su cuenta', () {
       const laApp = PoliticaDeNotificaciones(momento: MomentoDelPermiso.laAppDecide);
       expect(decidir(politica: laApp, disparador: Disparador.arranque),

@@ -221,8 +221,28 @@ AccionDePermiso decidirQueHacer({
   }
 
   // ¿Es el momento que el comercio eligió?
+  //
+  // 🔴 EL «ARRANQUE» SE RESCATA EN EL PRIMER LOGIN, Y SIN ESTO NO PEDÍA NUNCA.
+  //
+  // Medido el 2026-09-05, con Juan mirando su teléfono: entró como una persona del
+  // núcleo y no le apareció ningún diálogo de permiso; tuvo que tocar la campanita.
+  // La causa: `Disparador.arranque` no lo pasa NADIE en el SDK —el único que llama a
+  // esta función es `planearInicioDeSesion`, siempre con `login`—, así que un comercio
+  // con la política en «arranque» quedaba sin que se le pidiera el permiso jamás. La
+  // única puerta era `init(pedirPermisoAlIniciar: true)`, que no pasa por acá y por lo
+  // tanto ignora la pregunta blanda, el reintento y el «obligatorio».
+  //
+  // Una opción de la consola que no hace nada es peor que no tenerla: el comercio la
+  // elige, la ve guardada, y su gente nunca recibe un aviso sin que nada falle.
+  //
+  // El rescate es angosto a propósito: **sólo si todavía no se preguntó NUNCA**. Si el
+  // arranque ya preguntó, `yaSePregunto` es verdadero y acá no se vuelve a preguntar,
+  // así que no puede producir dos diálogos. Y no se pide al arrancar en frío —que sigue
+  // siendo el peor momento— sino al entrar, cuando la persona ya sabe qué es la app.
   final esElMomento = switch (politica.momento) {
-    MomentoDelPermiso.arranque => disparador == Disparador.arranque,
+    MomentoDelPermiso.arranque =>
+      disparador == Disparador.arranque ||
+          (disparador == Disparador.login && !yaSePregunto),
     MomentoDelPermiso.login => disparador == Disparador.login,
     MomentoDelPermiso.laAppDecide => disparador == Disparador.laAppLoPidio,
   };
@@ -302,7 +322,129 @@ class TextosDeUbicacion {
   }
 }
 
-/// SI SE LE OFRECE LA UBICACIÓN, CUÁNDO, Y CADA CUÁNTO SE REINSISTE.
+/// CÓMO SE LEE LA UBICACIÓN: UNA VEZ AL ENTRAR, SEGUIDO, O SEGUIDO CON LA APP CERRADA.
+///
+/// ══ 🔴 SON TRES COSAS DISTINTAS Y CUESTAN DISTINTO ══
+///
+/// No es «más o menos seguido» del mismo mecanismo: cada modo exige otro permiso, otra
+/// pregunta a la persona y otro trámite en la tienda. Elegir mal acá es la diferencia
+/// entre una función que anda y una aplicación que Google saca de Play.
+///
+/// El pedido que trajo esto (Juan, 2026-09-05) es el vendedor de motos: *«yo quiero saber
+/// qué tanto se mueve en el día, y no necesariamente con la aplicación abierta… le digo
+/// instalá la aplicación y esperá quince días»*. Eso es [enSegundoPlano]. Los otros dos
+/// modos no lo contestan, y decir que sí lo hacen sería mentir.
+enum ModoDeLectura {
+  /// UNA LECTURA CUANDO LA PERSONA ABRE LA APLICACIÓN, con el freno de
+  /// [Ubicacion.minimoEntreLecturas]. **Es lo de siempre y es el valor por omisión**:
+  /// nadie cambia de comportamiento por actualizar el paquete.
+  ///
+  /// Permiso: `ACCESS_COARSE_LOCATION`, el que ya se pedía. Nada nuevo.
+  alEntrar,
+
+  /// LECTURAS SEGUIDAS MIENTRAS LA PERSONA USA LA APLICACIÓN, sin el freno de las dos
+  /// horas. Se corta sola cuando la aplicación se va al fondo y vuelve a arrancar cuando
+  /// vuelve al frente.
+  ///
+  /// Permiso: **ninguno nuevo**. El mismo `ACCESS_COARSE_LOCATION`.
+  ///
+  /// 🔴 Aporta poco al «cuánto se mueve» —nadie cruza la ciudad en los tres minutos que
+  /// dura una sesión— pero es gratis y sirve para precisión: quien abre la aplicación tres
+  /// veces en una mañana deja tres marcas en vez de una. No confundirlo con el de abajo.
+  enPrimerPlano,
+
+  /// LECTURAS SEGUIDAS CON LA APLICACIÓN EN EL FONDO. Es lo que contesta «cuánto se mueve
+  /// en el día».
+  ///
+  /// Permiso: `ACCESS_BACKGROUND_LOCATION` **+ `FOREGROUND_SERVICE` +
+  /// `FOREGROUND_SERVICE_LOCATION`** (este último desde Android 14), y en iPhone
+  /// `NSLocationAlwaysAndWhenInUseUsageDescription` + `UIBackgroundModes → location`.
+  ///
+  /// 🔴 **El SDK no declara ninguno de esos y no los va a declarar.** Los declara la
+  /// aplicación anfitriona. Si no están, este modo **se apaga solo y lo dice** — ver
+  /// `Ubicacion.arrancarContinuo`. Ver también el README, sección «Ubicación continua».
+  ///
+  /// 🔴 **Y no llega a la aplicación MATADA.** Mientras la actividad viva —la persona
+  /// apretó inicio, apagó la pantalla, está en otra aplicación— las lecturas siguen
+  /// llegando por el servicio en primer plano de `geolocator`. Si la persona la barre de
+  /// las recientes, o si el teléfono la mata, se cortan hasta que la vuelva a abrir.
+  /// Sostener eso necesitaría un servicio propio con su propio isolate, y ese paquete le
+  /// inyectaría permisos a TODA aplicación que instale el SDK — que es exactamente lo que
+  /// este repositorio existe para no hacer.
+  enSegundoPlano,
+}
+
+/// LOS TEXTOS DE LA SEGUNDA PREGUNTA — la de «siempre», que NO es la de «mientras usás la
+/// aplicación».
+///
+/// ══ 🔴 POR QUÉ SON DOS PREGUNTAS Y NO UNA ══
+///
+/// Android las trata como dos permisos distintos y **prohíbe pedirlas juntas**: desde
+/// Android 11 el diálogo de «permitir siempre» ni siquiera se muestra, el sistema abre la
+/// pantalla de Ajustes y la persona tiene que elegirlo ahí a mano. Reusar el modal de
+/// «mientras usás la aplicación» para esto sería pedirle que acepte de nuevo algo que ya
+/// aceptó, y dejarla en una pantalla de Ajustes sin entender qué fue a buscar.
+///
+/// Y Google exige un texto casi literal antes de mostrar el diálogo. Los de fábrica de
+/// abajo lo cumplen; el comercio los cambia desde su consola, y si escribe algo que no lo
+/// cumpla, el rechazo se lo come él. Ver la ficha de `ACCESS_BACKGROUND_LOCATION` en
+/// `catalogo_de_permisos.dart`.
+class TextosDeSiempre {
+  const TextosDeSiempre({
+    this.titulo = 'Un paso más: siempre',
+    this.cuerpo =
+        'Esta aplicación recolecta datos de ubicación para saber cuánto te movés '
+        'incluso cuando está cerrada o no la estás usando. En la pantalla que sigue, '
+        'elegí «Permitir siempre».',
+    this.aceptar = 'Permitir siempre',
+    this.ahoraNo = 'Ahora no',
+    this.motivos = const [
+      'Es la zona, no la dirección exacta',
+      'Vas a ver un aviso fijo mientras esté midiendo',
+      'Lo cortás cuando quieras desde los ajustes',
+    ],
+    this.avisoTitulo = 'Midiendo tu zona',
+    this.avisoCuerpo = 'Tocá para ver o cortar esto.',
+  });
+
+  final String titulo;
+  final String cuerpo;
+  final String aceptar;
+  final String ahoraNo;
+  final List<String> motivos;
+
+  /// EL AVISO FIJO DE LA BARRA, que en Android **no es opcional**: un servicio que lee la
+  /// ubicación con la aplicación en el fondo obliga a mostrar una notificación permanente.
+  ///
+  /// 🔴 Lo escribe el comercio porque lleva su marca y va a estar en la barra de estado de
+  /// la persona todo el día. Un texto de relleno ahí es lo que hace que alguien entre a los
+  /// ajustes a cortar el permiso.
+  final String avisoTitulo;
+  final String avisoCuerpo;
+
+  factory TextosDeSiempre.fromJson(Map<String, dynamic>? j) {
+    const d = TextosDeSiempre();
+    if (j == null) return d;
+    String t(String k, String x) {
+      final v = j[k];
+      return (v is String && v.trim().isNotEmpty) ? v.trim() : x;
+    }
+    final m = j['motivos'];
+    return TextosDeSiempre(
+      titulo: t('titulo', d.titulo),
+      cuerpo: t('cuerpo', d.cuerpo),
+      aceptar: t('aceptar', d.aceptar),
+      ahoraNo: t('ahoraNo', d.ahoraNo),
+      motivos: (m is List && m.isNotEmpty)
+          ? m.map((e) => '$e').where((e) => e.trim().isNotEmpty).toList()
+          : d.motivos,
+      avisoTitulo: t('avisoTitulo', d.avisoTitulo),
+      avisoCuerpo: t('avisoCuerpo', d.avisoCuerpo),
+    );
+  }
+}
+
+/// SI SE LE OFRECE LA UBICACIÓN, CUÁNDO, CÓMO SE LEE, Y CADA CUÁNTO SE REINSISTE.
 ///
 /// Nace apagada. Un comercio que no la necesita no le muestra a su gente un diálogo
 /// de más, y prender esto sin querer es pedir un permiso que no hace falta.
@@ -312,10 +454,85 @@ class PoliticaDeUbicacion {
     this.momento = MomentoDeUbicacion.despuesDeEntrar,
     this.reintentarCadaDias = 14,
     this.textos = const TextosDeUbicacion(),
+    this.modo = ModoDeLectura.alEntrar,
+    this.cadaMinutosEnPrimerPlano = minutosEnPrimerPlanoPorOmision,
+    this.cadaMinutosEnSegundoPlano = minutosEnSegundoPlanoPorOmision,
+    this.textosDeSiempre = const TextosDeSiempre(),
   });
 
   final bool activa;
   final MomentoDeUbicacion momento;
+
+  /// Cómo se lee. Por omisión, **lo de siempre**: una lectura al entrar.
+  final ModoDeLectura modo;
+
+  /// ══ CADA CUÁNTO, EN PRIMER PLANO — DOS MINUTOS ══
+  ///
+  /// La aplicación está abierta, así que no hay ni servicio en el fondo ni aviso fijo ni
+  /// permiso nuevo: el costo es un despertar del proveedor fusionado cada dos minutos, sin
+  /// GPS. En una sesión típica de tres minutos eso deja **una o dos** marcas en vez de las
+  /// cero o una que deja el freno de dos horas — que es todo lo que este modo promete.
+  ///
+  /// Más rápido no compra nada: con `ACCESS_COARSE_LOCATION` Android redondea la respuesta
+  /// a ~2 km, así que dos lecturas separadas por veinte segundos dan el mismo punto.
+  final int cadaMinutosEnPrimerPlano;
+
+  /// ══ 🔴 CADA CUÁNTO, EN SEGUNDO PLANO — TREINTA MINUTOS, Y ACÁ ESTÁ EL PORQUÉ ══
+  ///
+  /// Tres cosas ponen el número, y las tres tiran para el mismo lado:
+  ///
+  ///  1. **La batería.** Se lee con `LocationAccuracy.low`, que en Android es
+  ///     `PRIORITY_LOW_POWER`: no enciende el GPS y se conforma con antenas y wifi. Lo que
+  ///     cuesta no es el arreglo, es despertar el teléfono. Android limita por su cuenta a
+  ///     **una lectura por hora** a las aplicaciones en el fondo que NO tienen servicio en
+  ///     primer plano; treinta minutos es el doble de eso, que es lo máximo que se puede
+  ///     defender como «conservador».
+  ///
+  ///  2. **🔴 EL TECHO DEL SERVICIO, que es el que de verdad manda.** El back guarda las
+  ///     últimas **60** posiciones por aparato (`CUANTAS_SE_GUARDAN`). A 30 min son 48 al
+  ///     día, así que esas 60 cubren **25 horas**: un día entero, que es justo la pregunta
+  ///     («cuánto se mueve **en el día**»). A 15 min cubrirían 15 horas y el día dejaría de
+  ///     entrar; a 5 min, cinco horas. **Los quince días que pidió Juan NO entran a ninguna
+  ///     frecuencia** mientras el servicio guarde 60 y no agregue por día — con 60 huecos,
+  ///     quince días salen a una lectura cada seis horas, que es el freno viejo que se acaba
+  ///     de sacar por inútil. Eso se arregla del lado del servicio, no de acá.
+  ///
+  ///  3. **Que no se lo revoquen.** Mientras esto corre hay un aviso fijo en la barra de la
+  ///     persona. Cuanto menos se note el teléfono caliente, más dura el permiso.
+  ///
+  /// Configurable por comercio, con piso de [minimoMinutosEnSegundoPlano]: por debajo de
+  /// cinco minutos Android estrangula igual y el gasto de batería deja de ser defendible.
+  final int cadaMinutosEnSegundoPlano;
+
+  /// Los textos de la segunda pregunta y del aviso fijo. Ver [TextosDeSiempre].
+  final TextosDeSiempre textosDeSiempre;
+
+  /// Ver [cadaMinutosEnPrimerPlano].
+  static const minutosEnPrimerPlanoPorOmision = 2;
+
+  /// Ver [cadaMinutosEnSegundoPlano].
+  static const minutosEnSegundoPlanoPorOmision = 30;
+
+  /// Piso: por debajo de esto Android estrangula igual y el gasto no se justifica.
+  static const minimoMinutosEnSegundoPlano = 5;
+
+  /// Piso del primer plano. Un minuto ya es más rápido de lo que la precisión aproximada
+  /// puede distinguir; menos es gastar batería para repetir el mismo punto.
+  static const minimoMinutosEnPrimerPlano = 1;
+
+  /// Cada cuánto se lee de verdad, para el modo que esté puesto. Ya viene acotado: un
+  /// comercio que escriba `0` en la consola no puede dejar el teléfono leyendo sin parar.
+  Duration get cada => switch (modo) {
+        ModoDeLectura.alEntrar => Duration.zero,
+        ModoDeLectura.enPrimerPlano => Duration(
+            minutes: cadaMinutosEnPrimerPlano < minimoMinutosEnPrimerPlano
+                ? minimoMinutosEnPrimerPlano
+                : cadaMinutosEnPrimerPlano),
+        ModoDeLectura.enSegundoPlano => Duration(
+            minutes: cadaMinutosEnSegundoPlano < minimoMinutosEnSegundoPlano
+                ? minimoMinutosEnSegundoPlano
+                : cadaMinutosEnSegundoPlano),
+      };
 
   /// Cada cuántos días volver a ofrecerla a quien cerró el modal sin aceptar.
   ///
@@ -328,17 +545,38 @@ class PoliticaDeUbicacion {
 
   factory PoliticaDeUbicacion.fromJson(Map<String, dynamic>? j) {
     if (j == null) return const PoliticaDeUbicacion();
+    int entero(String clave, int siNo) =>
+        (j[clave] is num) ? (j[clave] as num).toInt() : siNo;
     return PoliticaDeUbicacion(
       activa: j['activa'] == true,
       momento: j['momento'] == 'laAppDecide'
           ? MomentoDeUbicacion.laAppDecide
           : MomentoDeUbicacion.despuesDeEntrar,
-      reintentarCadaDias:
-          (j['reintentarCadaDias'] is num) ? (j['reintentarCadaDias'] as num).toInt() : 14,
+      reintentarCadaDias: entero('reintentarCadaDias', 14),
       textos: TextosDeUbicacion.fromJson(
           j['textos'] is Map ? Map<String, dynamic>.from(j['textos'] as Map) : null),
+      modo: modoDesde(j['modo'] as String?),
+      cadaMinutosEnPrimerPlano:
+          entero('cadaMinutosEnPrimerPlano', minutosEnPrimerPlanoPorOmision),
+      cadaMinutosEnSegundoPlano:
+          entero('cadaMinutosEnSegundoPlano', minutosEnSegundoPlanoPorOmision),
+      textosDeSiempre: TextosDeSiempre.fromJson(j['textosDeSiempre'] is Map
+          ? Map<String, dynamic>.from(j['textosDeSiempre'] as Map)
+          : null),
     );
   }
+
+  /// 🔴 UNA PALABRA QUE NO SE CONOCE CAE EN [ModoDeLectura.alEntrar], NUNCA HACIA ARRIBA.
+  ///
+  /// Es la misma regla que ya usa `PoliticaDeNotificaciones._momentoDesde`, y acá pesa más:
+  /// si mañana el servicio inventa un modo nuevo, una aplicación vieja que no lo entiende
+  /// tiene que seguir haciendo lo de siempre. Caer hacia el modo más caro sería prender un
+  /// servicio en el fondo por una palabra mal escrita.
+  static ModoDeLectura modoDesde(String? v) => switch (v) {
+        'enPrimerPlano' => ModoDeLectura.enPrimerPlano,
+        'enSegundoPlano' => ModoDeLectura.enSegundoPlano,
+        _ => ModoDeLectura.alEntrar,
+      };
 }
 
 enum MomentoDeUbicacion {
