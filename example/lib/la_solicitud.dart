@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hz_collection_sdk/hz_collection_sdk.dart';
 
-/// LA SOLICITUD — el formulario que el SDK mira, y el panel de lo que midió.
+/// EL FORMULARIO — el que el SDK mira, y el panel de lo que midió.
 ///
 /// 🔴 No es una pantalla de adorno de la demo: es **la única forma de probar en la pantalla
 /// lo que la pantalla hace**. El tiempo de llenado, el abandono y el «pegó o escribió» sólo
@@ -60,7 +60,7 @@ class _LaSolicitudState extends State<LaSolicitud> {
     await _refrescar();
   }
 
-  /// El botón «pegar» que tiene cualquier aplicación de crédito al lado de la cédula.
+  /// El botón «pegar» que tiene cualquier formulario al lado de un documento o un teléfono.
   ///
   /// No es un truco para la demo: trae el texto del portapapeles y lo deja en el campo de
   /// un solo golpe, que es exactamente lo que hace el «Pegar» del menú largo de Android. El
@@ -90,7 +90,7 @@ class _LaSolicitudState extends State<LaSolicitud> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Solicitud de crédito', style: t.textTheme.titleMedium),
+                Text('Formulario de prueba', style: t.textTheme.titleMedium),
                 Text(
                   'Se mide cuánto tardás, si pegás o escribís cada dato y cuántas veces lo '
                   'corregís. Nunca se guarda QUÉ escribiste.',
@@ -100,11 +100,27 @@ class _LaSolicitudState extends State<LaSolicitud> {
 
                 /// ③ Cada campo recibe el controlador y el foco que ya vienen observados.
                 ///    Es una línea por campo, y la aplicación los usa como cualquier otro.
+                /// 🔴 CUATRO CAMPOS GENÉRICOS, Y NO ES UN DETALLE DE REDACCIÓN — 2026-09-06.
+                ///
+                /// Hasta hoy decían «Monto que pedís» y «Para qué lo pedís»: un formulario
+                /// de crédito. Y esta aplicación sirve a comercios de cualquier rubro — un
+                /// comercio de transporte que abre la demostración y ve que le piden un
+                /// monto de préstamo entiende que el producto no es para él.
+                ///
+                /// Lo que se mide no cambia en absoluto: el comportamiento se mide sobre
+                /// CUALQUIER campo. Los cuatro se eligieron por el TIPO DE TECLADO que
+                /// abren —numérico, teléfono, correo y texto libre—, porque el «pegó o
+                /// escribió» y el tiempo de tipeo se comportan distinto en cada uno, y con
+                /// cuatro campos iguales no se vería.
+                ///
+                /// Los nombres que viajan (`documento`, `telefono`, …) son rótulos, nunca
+                /// lo que la persona escribió. Ver `comportamiento.service.ts`, que rechaza
+                /// un nombre que parezca un valor.
                 _Campo(
-                  campo: _f.campo('cedula'),
-                  rotulo: 'Cédula',
+                  campo: _f.campo('documento'),
+                  rotulo: 'Documento',
                   teclado: TextInputType.number,
-                  alPegar: () => _pegar(_f.campo('cedula')),
+                  alPegar: () => _pegar(_f.campo('documento')),
                 ),
                 _Campo(
                   campo: _f.campo('telefono'),
@@ -113,13 +129,14 @@ class _LaSolicitudState extends State<LaSolicitud> {
                   alPegar: () => _pegar(_f.campo('telefono')),
                 ),
                 _Campo(
-                  campo: _f.campo('monto'),
-                  rotulo: 'Monto que pedís',
-                  teclado: TextInputType.number,
+                  campo: _f.campo('correo'),
+                  rotulo: 'Correo',
+                  teclado: TextInputType.emailAddress,
+                  alPegar: () => _pegar(_f.campo('correo')),
                 ),
                 _Campo(
-                  campo: _f.campo('motivo'),
-                  rotulo: 'Para qué lo pedís',
+                  campo: _f.campo('comentario'),
+                  rotulo: 'Comentario',
                 ),
                 const SizedBox(height: 8),
                 Row(children: [
@@ -127,7 +144,7 @@ class _LaSolicitudState extends State<LaSolicitud> {
                     child: FilledButton.icon(
                       onPressed: _enviada ? null : _enviar,
                       icon: const Icon(Icons.send),
-                      label: Text(_enviada ? 'Enviada' : 'Enviar solicitud'),
+                      label: Text(_enviada ? 'Enviado' : 'Enviar'),
                     ),
                   ),
                 ]),

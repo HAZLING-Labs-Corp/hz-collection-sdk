@@ -417,6 +417,25 @@ class ConfigStore {
     return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-${hex(8, 10)}-${hex(10, 16)}';
   }
 
+  /// ══ OLVIDAR LA CONFIGURACIÓN DEL COMERCIO ═════════════════════════════════
+  ///
+  /// Para cambiar de comercio (`AkPush.cambiarDeComercio`). NO se usa al cerrar sesión:
+  /// la ficha es del comercio, no de la persona, y borrarla en cada logout dejaría a la
+  /// aplicación pidiéndola de nuevo en cada entrada — y sin ficha no hay avisos hasta que
+  /// la red conteste.
+  ///
+  /// 🔴 Se borra la ficha Y la credencial, juntas. Son un par: una credencial de un
+  /// comercio con la ficha de otro es el estado que hace que el SDK crea que está en un
+  /// comercio y reporte al otro. El isolate de segundo plano lee la credencial de acá.
+  Future<void> olvidarConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_claveConfig);
+    await prefs.remove(_claveCredencial);
+    // El consentimiento también: lo que la persona aceptó lo aceptó CON UN COMERCIO. Que
+    // valga para el siguiente sería darle por contestado algo que nunca le preguntaron.
+    await prefs.remove(_claveConsentimiento);
+  }
+
   Future<void> olvidarSesion() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_claveToken);

@@ -26,8 +26,19 @@ import 'package:http/http.dart' as http;
 /// ```
 /// flutter run --dart-define=NUCLEO_URL=http://192.168.10.103:3010
 /// ```
-const nucleoUrl =
-    String.fromEnvironment('NUCLEO_URL', defaultValue: 'http://10.0.2.2:3010');
+/// 🔴 YA NO ES CONSTANTE, Y ESO ES EL PUNTO — 2026-09-06.
+///
+/// Cada comercio tiene SU núcleo: las personas de Rodar salen del núcleo de Rodar y las de
+/// Mundo Total del suyo. Mientras esto fue `const`, cambiar de comercio obligaba a volver a
+/// compilar — y peor: era posible cambiar la llave de Collection y quedarse con el núcleo
+/// anterior, que muestra las personas del comercio de antes y **no da ningún error**. Es el
+/// falso positivo más caro de una demostración.
+///
+/// Ahora el selector de comercios la escribe con la dirección que trae el llavero. El valor
+/// inicial sigue saliendo del define, así que un `flutter run` sin selector se comporta
+/// igual que antes.
+String nucleoUrl =
+    const String.fromEnvironment('NUCLEO_URL', defaultValue: 'http://10.0.2.2:3010');
 
 /// ═══════════════════════════════════════════════════════════════════════════════
 /// 🔴 LA LLAVE DE CONSULTA — pedido de Juan, 2026-09-05
@@ -52,7 +63,10 @@ const nucleoUrl =
 /// ```
 /// flutter run --dart-define=NUCLEO_LLAVE=mtk_…
 /// ```
-const nucleoLlave = String.fromEnvironment('NUCLEO_LLAVE');
+/// Mutable por el mismo motivo que `nucleoUrl`: la llave de consulta es de un núcleo, y al
+/// cambiar de comercio cambia el núcleo. Una llave del núcleo anterior contra el núcleo
+/// nuevo da 401, que en la pantalla se lee como «el núcleo no contesta».
+String nucleoLlave = const String.fromEnvironment('NUCLEO_LLAVE');
 
 /// Una persona, tal como la devuelve el núcleo.
 ///

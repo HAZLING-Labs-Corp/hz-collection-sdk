@@ -48,6 +48,15 @@ dependencies:
   # cliente HTTP.
   http: ^1.2.0
 
+  # Para RECORDAR a qué comercio se cambió. Va declarado acá y no heredado del
+  # SDK por lo mismo que `http`: el SDK lo usa para su propio almacén, y apoyarse
+  # en su dependencia transitiva se rompe el día que cambie de mecanismo.
+  #
+  # Guarda una sola cosa: el slug del comercio elegido. Sin esto, cada reinicio
+  # de la app vuelve al comercio con el que se compiló — y en una demo la app se
+  # reinicia todo el tiempo.
+  shared_preferences: ^2.3.2
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
