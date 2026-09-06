@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ═══════════════════════════════════════════════════════════════════════════════
+  SÓLO PARA LA COMPILACIÓN DE DEPURACIÓN — 2026-09-05
+  ═══════════════════════════════════════════════════════════════════════════════
+
+  Este archivo PISA al de `src/main` únicamente en las compilaciones de depuración, que
+  son las que se instalan a mano para probar. La de publicación sigue usando el de `main`,
+  con su lista blanca angosta: 10.0.2.2 y localhost, y HTTPS para todo lo demás.
+
+  ── POR QUÉ HIZO FALTA ──────────────────────────────────────────────────────────
+
+  El de `main` sólo permite HTTP contra `10.0.2.2`, que es la máquina anfitriona vista
+  DESDE EL EMULADOR y no existe en ningún otro lado. Al probar en un teléfono de verdad la
+  máquina es una IP de la red —`192.168.x.x`— y Android bloquea esa conexión.
+
+  🔴 Y falla CALLADO: no hay un error que diga «bloqueado por la política de red». La
+  aplicación se queda sin configuración, el SDK reporta que no pudo hablar con el
+  servicio, y quien lo mira busca el problema en el servidor, en la llave o en el wifi.
+  Es exactamente la clase de falla que cuesta una tarde.
+
+  ── POR QUÉ ABIERTO Y NO LA IP PUESTA A MANO ────────────────────────────────────
+
+  Poner `192.168.10.105` acá parece más prudente y es peor: la IP de la máquina la reparte
+  el router y cambia sola —en esta misma sesión pasó de .103 a .105—, así que una IP fija
+  significa que la prueba deja de andar un día cualquiera sin que nadie haya tocado nada, y
+  el síntoma vuelve a ser el silencio de arriba.
+
+  El riesgo real de abrirlo acá es bajo y acotado: una compilación de depuración no se
+  publica, se instala a mano para probar contra una máquina de desarrollo. Lo que NO se
+  hace es tocar el de `main`, que es el que viaja en la aplicación de verdad.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
