@@ -195,10 +195,20 @@ class Nucleo {
   /// Pide sesión: el elenco son personas con cédula, ciudad y correo, y un
   /// directorio abierto es una cartera publicada.
   static Future<List<PersonaDelNucleo>> directorio({String busqueda = ''}) async {
-    if (token == null) {
+    /*
+      La llave de la APLICACION va primero. La sesion de la persona queda de reserva para
+      cuando la app se compila sin llave —al probar a mano— y asi no se rompe.
+    */
+    final Map<String, String> credencial = nucleoLlave.isNotEmpty
+        ? {'x-api-key': nucleoLlave}
+        : token != null
+            ? {'authorization': 'Bearer $token'}
+            : const {};
+
+    if (credencial.isEmpty) {
       throw ErrorDelNucleo(
-        'Todavía no hay sesión. Entrá con un usuario del núcleo y después se '
-        'puede mirar el directorio.',
+        'Esta aplicacion se compilo sin llave de consulta, asi que el directorio solo se '
+        'puede ver despues de entrar. Compilala con --dart-define=NUCLEO_LLAVE=mtk_...',
       );
     }
 
@@ -209,7 +219,7 @@ class Nucleo {
           'porPagina': '200',
           if (busqueda.isNotEmpty) 'q': busqueda,
         }),
-        headers: {'authorization': 'Bearer $token'},
+        headers: credencial,
       ).timeout(_tiempoLimite);
     } catch (e) {
       _noContesta(e, '/api/contactos');
