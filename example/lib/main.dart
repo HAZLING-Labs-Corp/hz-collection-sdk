@@ -8,6 +8,16 @@ import 'la_solicitud.dart';
 import 'lo_recolectado.dart';
 import 'nucleo.dart';
 
+/// EL NOMBRE VISIBLE DE LA APLICACIÓN.
+///
+/// Sale de un define y no de una constante escrita, por lo mismo que la llave: esta única
+/// aplicación se compila para varios comercios, y un nombre escrito en el código obliga a
+/// tocar el código —y a acordarse de volverlo atrás— cada vez que se compila para otro.
+///
+/// El comercio en sí NO se configura acá: sale de la llave. Esto es sólo la marca que se
+/// lee en la pantalla y en el lanzador.
+const _nombreDeLaApp = String.fromEnvironment('APP_NOMBRE', defaultValue: 'Collection');
+
 /// El `10.0.2.2` es cómo un emulador de Android alcanza el localhost de la
 /// máquina que lo hospeda.
 ///
@@ -59,7 +69,7 @@ class DemoApp extends StatelessWidget {
         // configuró en la consola. Sin esta línea todo lo demás anda igual, pero el
         // modal no tiene dónde dibujarse y no aparece.
         navigatorKey: AkPush.navegador,
-        title: 'Collection',
+        title: _nombreDeLaApp,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2D5F8A)),
           useMaterial3: true,
@@ -257,7 +267,7 @@ class _PantallaState extends State<Pantalla> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Collection'),
+        title: Text(_nombreDeLaApp),
         backgroundColor: t.colorScheme.inversePrimary,
         actions: [
           // 🔴 LA CAMPANITA — una línea, y viene hecha del SDK.
