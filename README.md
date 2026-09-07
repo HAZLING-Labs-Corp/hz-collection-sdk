@@ -954,10 +954,10 @@ esperar sirve.
 | `code` | qué pasó | ¿reintentar? |
 |---|---|---|
 | `unauthorized` | la llave falta o es inválida | no |
-| `appMismatch` | el identificador de tu app no es el que registramos | no |
+| `appMismatch` | el identificador de tu app no es el que registramos — **rompe la cadena entera**: sin configuración no hay Firebase, sin Firebase no se puede pedir el permiso ni hay token ni llega la política de ubicación. Es la causa de los cinco síntomas que se reportan por separado. Ver [INSTALAR-EN-UNA-APP-NUEVA.md](INSTALAR-EN-UNA-APP-NUEVA.md) | no |
 | `firebaseInit` | tu app ya inicializó Firebase con otra cuenta — ver abajo | no |
 | `permissionDenied` | la persona no dio permiso. **No es un fallo, es una respuesta** — el permiso se consulta con `estadoDelPermiso()`, no se atrapa como error | no |
-| `notInitialized` | llamaste a `identify()` o `logout()` antes de que `init()` terminara | no |
+| `notInitialized` | 🔴 **dos causas, y la segunda es la frecuente:** llamaste a `identify()`/`logout()` antes de que `init()` terminara, **o** `init()` terminó bien pero volvió **sin configuración** —el paquete no está registrado en el comercio— y sin configuración el SDK no se considera iniciado. Antes de revisar el orden de las llamadas, mirá `AkPush.sinAvisosPorque` y corré `AkPush.diagnostico()`. Ver [INSTALAR-EN-UNA-APP-NUEVA.md](INSTALAR-EN-UNA-APP-NUEVA.md) | no |
 | `firmaDeIdentidad` | tu comercio exige el `userId` firmado, y la firma falta o no coincide | no |
 | `rutaNoEncontrada` | la dirección está mal configurada | no |
 | `unknown` | algo falló y no se pudo clasificar. El detalle está en `details`, y aparece en el diagnóstico como «último error» | no |

@@ -49,13 +49,24 @@ class EstadoDeAvisos {
   /// Si hay algo que ofrecerle a la persona. Es la condición para pintar el punto rojo.
   bool get hayAlgoQueHacer => accion != null;
 
+  /// 🔴 EL TEXTO SE TUTEA. NUNCA SE VOSEA.
+  ///
+  /// Estas cuatro frases estaban voseadas —«si lo activás», «podés», «para
+  /// vos»— y salieron a pantalla en la app de Rodar el 2026-09-07. El producto
+  /// habla **castellano de Venezuela**, donde se tutea, y el voseo suena
+  /// extranjero: la campanita es una de las pocas veces que la aplicación PIDE
+  /// algo, y pedir con acento de otro país es el peor momento para no sonar de
+  /// acá.
+  ///
+  /// Es el defecto que más se cuela porque el imperativo es donde más se nota:
+  /// «activá» / «activa» difieren en una letra.
   factory EstadoDeAvisos.de(EstadoDelPermiso p) {
     switch (p) {
       case EstadoDelPermiso.concedido:
         return const EstadoDeAvisos._(
           permiso: EstadoDelPermiso.concedido,
           titulo: 'Avisos activados',
-          explicacion: 'Te vamos a avisar acá cuando haya algo importante para vos.',
+          explicacion: 'Te vamos a avisar acá cuando haya algo importante para ti.',
           accion: null,
           puedeRecibir: true,
           hayQueIrAAjustes: false,
@@ -66,7 +77,7 @@ class EstadoDeAvisos {
           permiso: EstadoDelPermiso.sinPreguntar,
           titulo: 'Avisos apagados',
           explicacion:
-              'Todavía no nos diste permiso para avisarte. Si lo activás, te escribimos '
+              'Todavía no nos diste permiso para avisarte. Si los activas, te escribimos '
               'sólo cuando haya algo que te sirva saber.',
           accion: 'Activar los avisos',
           puedeRecibir: false,
@@ -81,8 +92,8 @@ class EstadoDeAvisos {
           permiso: EstadoDelPermiso.denegado,
           titulo: 'Avisos apagados',
           explicacion:
-              'Los avisos están apagados, así que no te vamos a poder escribir. Podés '
-              'activarlos ahora si querés enterarte de lo tuyo.',
+              'Los avisos están apagados, así que no te vamos a poder escribir. Puedes '
+              'activarlos ahora si quieres enterarte de lo tuyo.',
           accion: 'Activar los avisos',
           puedeRecibir: false,
           hayQueIrAAjustes: false,
@@ -107,7 +118,7 @@ class EstadoDeAvisos {
           titulo: 'Avisos en silencio',
           explicacion:
               'Los avisos te llegan al centro de notificaciones, pero sin sonido ni '
-              'cartel. Podés darles aviso completo desde los ajustes.',
+              'cartel. Puedes darles aviso completo desde los ajustes.',
           accion: 'Abrir los ajustes',
           puedeRecibir: true,
           hayQueIrAAjustes: true,

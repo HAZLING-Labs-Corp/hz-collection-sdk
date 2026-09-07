@@ -29,6 +29,7 @@ import 'modulos/modulo.dart';
 import 'modulos/modulo_aparato.dart';
 import 'modulos/modulo_autenticidad.dart';
 import 'modulos/modulo_senales.dart';
+import 'modulos/modulo_ubicacion.dart';
 import 'modulos/registro.dart';
 import 'presenter.dart';
 import 'push_message.dart';
@@ -411,6 +412,24 @@ class AkPush {
         ModuloDeAparato(),
         ModuloDeAutenticidad(),
         ModuloDeSenales(),
+        /* 🔴 FALTABA, Y ERA CODIGO MUERTO. Medido el 2026-09-07 sobre la app de Rodar:
+           el comercio tenia la ubicacion activa en la consola, el permiso concedido en el
+           telefono, el modulo escrito y probado... y CERO lecturas en Collection. La causa
+           era esta lista: `ModuloDeUbicacion` no se instanciaba en ningun lado del SDK.
+           `grep -rl ModuloDeUbicacion lib/` devolvia un solo archivo, el suyo.
+
+           No fallaba nada. No habia error, ni log, ni bandera: el modulo simplemente no
+           existia en tiempo de ejecucion, asi que la ubicacion no se medía en NINGUNA
+           aplicacion que use este SDK — ni en Rodar ni en Multivalores.
+
+           Es el mismo defecto que su propio comentario describe unas lineas mas abajo para
+           el registro de modulos («HASTA HOY EL REGISTRO DE MODULOS ERA CODIGO MUERTO»):
+           se arreglo para `aparato` y `senales`, y `ubicacion` quedo afuera.
+
+           La politica se pasa como FUNCION y no como valor: el comercio la cambia en
+           caliente desde la consola, y un valor capturado acá dejaria al modulo midiendo
+           con la cadencia de antes hasta que alguien reinicie la aplicacion. */
+        ModuloDeUbicacion(_ubicacion, () => _politicaDeUbicacion, () => navegador),
       ]);
       /* 🔴 EL PORTERO SE REARMA CON EL COMERCIO DE AHORA, ANTES DE CORRER LOS MÓDULOS.
          Es la línea que hace efectivo el arreglo: la huella de lo ya transmitido se guarda por
