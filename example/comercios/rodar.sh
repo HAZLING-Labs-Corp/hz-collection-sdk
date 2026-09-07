@@ -19,23 +19,33 @@ ANFITRION="${1:-10.0.2.2}"
 # Emitida el 2026-09-06 por `npm run comercio-nuevo -- claves --slug rodar`.
 LLAVE="${AKPUSH_KEY:-pk_live_c0a5669a8c802951.lILRmcamJhmsG3aCUcTt5YaxDgevE8lLiAtrwWTcs_Y}"
 
-# 🔴 EL NÚCLEO DE RODAR TODAVÍA NO ESTÁ DEFINIDO.
+# EL NÚCLEO DE RODAR — ya existe, desde el 2026-09-07.
 #
 # `NUCLEO_URL` es de dónde salen las personas: el sistema de origen del comercio, el que
-# las POSEE. Rodar va a tener el suyo —su propio back, con su propia base— y hasta que se
-# diga cuál es, esto apunta al núcleo de Mundo Total para que la app entre y se pueda
-# probar el ciclo completo.
+# las POSEE. El de Rodar es su propio back, desplegado en Railway, y contesta
+# `GET /api/contactos` con llave de consulta (`contactos:leer`) igual que el de Mundo
+# Total. Se cambia por fuera:  NUCLEO_URL=http://... ./example/comercios/rodar.sh
 #
-# Mientras esto siga así, las personas que se vean en la app son las de Mundo Total. Se
-# cambia en esta línea, o por fuera:  NUCLEO_URL=http://... ./example/comercios/rodar.sh
-NUCLEO="${NUCLEO_URL:-http://$ANFITRION:3010}"
+# 🔴 PERO ESTE SCRIPT NO ES EL CAMINO RECOMENDADO. Compila contra UN comercio y le pasa
+# la llave a mano; `demostracion.sh` no compila contra ninguno y saca la dirección Y la
+# llave del llavero, que es donde viven de verdad. Este queda para probar el comercio
+# aislado, sin llavero de por medio.
+NUCLEO="${NUCLEO_URL:-https://back-production-386b.up.railway.app}"
 
 # Uno de los paquetes que ya están registrados en el comercio (se clonaron los cinco de
 # Mundo Total). Con un paquete que no esté registrado, el servicio contesta 409.
 PAQUETE="${PAQUETE:-com.hazling.creditotal}"
 
 echo "▶ Rodar · núcleo $NUCLEO · servicio http://$ANFITRION:3085 · paquete $PAQUETE"
-[[ "$NUCLEO" == *":3010"* ]] && echo "  ⚠️  núcleo provisional: son las personas de Mundo Total"
+# El aviso sigue, apuntando al caso que de verdad engaña: si alguien deja el núcleo de
+# Mundo Total puesto, la app muestra 104 personas que no son de Rodar y NADA falla.
+[[ "$NUCLEO" == *":3010"* || "$NUCLEO" == *"core-production"* ]] \
+  && echo "  ⚠️  ese es el núcleo de MUNDO TOTAL: las personas que veas no son de Rodar"
+
+# Sin llave de consulta el directorio no se puede leer y la app pide usuario y clave —que
+# en Rodar no existen—. Se avisa acá y no se descubre en la pantalla.
+[[ -z "${NUCLEO_LLAVE:-}" ]] \
+  && echo "  ⚠️  sin NUCLEO_LLAVE: no vas a ver el directorio. Usá demostracion.sh, que la saca del llavero"
 
 exec flutter run \
   -Ppaquete="$PAQUETE" \
@@ -43,4 +53,5 @@ exec flutter run \
   --dart-define=APP_NOMBRE=Rodar \
   --dart-define=AKPUSH_KEY="$LLAVE" \
   --dart-define=AKPUSH_URL="http://$ANFITRION:3085/api/v1" \
-  --dart-define=NUCLEO_URL="$NUCLEO"
+  --dart-define=NUCLEO_URL="$NUCLEO" \
+  --dart-define=NUCLEO_LLAVE="${NUCLEO_LLAVE:-}"
