@@ -1,0 +1,101 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      🔴 ESTE MANIFIESTO ESTÁ VACÍO A PROPÓSITO, Y TIENE QUE SEGUIR ASÍ.
+
+      El paquete tiene código nativo desde el 2026-09-01 —hace falta para leer las señales
+      de nivel 0 que Flutter no alcanza— pero NO declara un solo permiso. Un permiso
+      declarado acá se le inyecta a TODA aplicación que instale el paquete, la use o no:
+      es exactamente el error que se le midió a CredoLab, cuyos paquetes le meten
+      READ_CONTACTS y READ_CALENDAR a cualquiera.
+
+      `bin/muro.dart` comprueba esto en cada compilación y falla si aparece algo. Si algún
+      día hace falta un permiso de verdad, lo declara la APLICACIÓN anfitriona, nunca acá.
+    -->
+    <!--
+      ═══════════════════════════════════════════════════════════════════════════════════
+      🔴 UBICACIÓN EN SEGUNDO PLANO — EL PERMISO QUE ESTE ARCHIVO NO VA A DECLARAR NUNCA
+      ═══════════════════════════════════════════════════════════════════════════════════
+
+      Desde el 2026-09-05 el SDK SABE leer la ubicación con la aplicación en el fondo
+      (`ModoDeLectura.enSegundoPlano`). Para eso hacen falta TRES renglones:
+
+          <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+          <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+          <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+
+      NO VAN ACÁ. Van en el manifiesto de la APLICACIÓN que embebe el SDK, y sólo si esa
+      aplicación de verdad los necesita. Antes de copiarlos a algún lado, esto:
+
+      · Un permiso escrito en este archivo se le inyecta a TODA aplicación que instale el
+        paquete, la use o no. Declararlo acá se lo impondría también a los comercios de
+        crédito.
+
+      · 🔴 La POLÍTICA DE PRÉSTAMOS PERSONALES de Google Play PROHÍBE la ubicación en
+        segundo plano. No pide un formulario: saca la aplicación de la tienda. Un comercio
+        de préstamos que herede este permiso por haber instalado el SDK se entera cuando le
+        rechazan la subida — o cuando le bajan la app publicada.
+
+      · Y para el que SÍ puede: `ACCESS_BACKGROUND_LOCATION` es nivel 3, el único trámite de
+        todo este catálogo que Google revisa A MANO. Formulario de Declaración de Permisos,
+        video de 30 segundos mostrando la función, semanas de revisión y ninguna apelación
+        documentada. Los cuatro requisitos con su fuente están en la ficha del permiso, en
+        `lib/src/permisologia/catalogo_de_permisos.dart`.
+
+      Qué hace el SDK si NO están declarados: apaga el modo de segundo plano, escribe por
+      qué en el diagnóstico y sigue leyendo como siempre. NUNCA mide en silencio — ver
+      `Ubicacion.sePuedeEnSegundoPlano` y el README, sección «Ubicación continua».
+    -->
+    <!--
+      PRUEBA DE CONCEPTO (2026-09-01): detección de PRESENCIA de apps, para el mapa de
+      "canales alcanzables". Esto NO es un permiso — es <queries>, la forma que Google Play
+      SÍ permite de preguntar por paquetes PUNTUALES sin `QUERY_ALL_PACKAGES` (que sí saca de
+      la tienda). No dice si la app está activa, sólo si está instalada. iOS no tiene equivalente.
+    -->
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+        <package android:name="org.telegram.messenger" />
+        <package android:name="com.facebook.orca" />
+        <package android:name="com.facebook.katana" />
+        <package android:name="com.instagram.android" />
+        <package android:name="org.thoughtcrime.securesms" />
+        <package android:name="com.google.android.apps.messaging" />
+        <package android:name="com.google.android.gm" />
+        <package android:name="com.android.chrome" />
+        <package android:name="com.google.android.youtube" />
+        <package android:name="com.android.vending" />
+
+        <!--
+          ═══════════════════════════════════════════════════════════════════════════
+          APPS QUE HABLAN DE LA VIDA ECONÓMICA — agregadas el 2026-09-05
+          ═══════════════════════════════════════════════════════════════════════════
+
+          Pedido de Juan: *«no me preguntás si tiene WhatsApp… si tiene Google Maps,
+          qué tanto se mueve el teléfono»*. Las de arriba se declararon para saber por
+          dónde MANDARLE un mensaje; éstas son para saber algo de la persona.
+
+          🔴 Siguen sin ser un permiso. `<queries>` pregunta por paquetes PUNTUALES y es
+          lo que Google Play permite; `QUERY_ALL_PACKAGES` —ver la lista completa— exige
+          revisión manual y para una financiera es el camino corto a que la saquen.
+
+          ⚠️ Y una advertencia que vale más que la lista: **un nombre de paquete mal
+          escrito no falla, devuelve `false` para siempre**. La señal diría «no tiene
+          Mercado Pago» de todo el mundo y nadie se enteraría. Cada uno de éstos hay que
+          confirmarlo contra un teléfono real antes de darle peso en ningún modelo.
+        -->
+
+        <!-- Se mueve: tiene mapas y pide viajes. -->
+        <package android:name="com.google.android.apps.maps" />
+        <package android:name="com.ubercab" />
+
+        <!-- Compra y paga por internet: actividad económica declarada por sus propias apps. -->
+        <package android:name="com.mercadolibre" />
+        <package android:name="com.mercadopago.wallet" />
+        <package android:name="com.binance.dev" />
+        <package android:name="com.zellepay.zelle" />
+
+        <!-- Paga suscripciones todos los meses: capacidad de pago recurrente sostenida. -->
+        <package android:name="com.netflix.mediaclient" />
+        <package android:name="com.spotify.music" />
+    </queries>
+</manifest>

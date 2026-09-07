@@ -1,4 +1,4 @@
-name: ak_push
+name: hz_collection_sdk
 description: "Recibir notificaciones push con una llave y una línea. La cuenta de Google llega desde el servidor: no se pega ningún archivo de configuración."
 version: 0.1.0
 publish_to: 'none'
@@ -33,12 +33,18 @@ dependencies:
   # Firebase alcanza para leer y pedir el permiso —incluso para distinguir un
   # «no» reversible de uno definitivo—, pero no tiene forma de abrir esa
   # pantalla, y este paquete no tiene lado nativo propio donde escribirla.
-  permission_handler: ^12.0.3
+  # 🔴 permission_handler SACADO el 2026-08-31: declaraba MANAGE_EXTERNAL_STORAGE y
+  # REQUEST_IGNORE_BATTERY_OPTIMIZATIONS en su manifest y se los inyectaba a toda
+  # aplicación que instalara este SDK. Ver ubicacion.dart y permiso.dart.
+  app_settings: ^5.1.1
 
   # Metadata del dispositivo que viaja con el alta. Es opcional por diseño:
   # si no se puede leer, el alta sigue igual.
   device_info_plus: ^10.1.2
   package_info_plus: ^8.1.2
+  battery_plus: ^6.2.1
+  connectivity_plus: ^6.1.0
+  disk_space_plus: ^0.2.3
   geolocator: ^14.0.2
 
 dev_dependencies:
@@ -47,3 +53,17 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 flutter:
+  # 🔴 El paquete pasa a ser plugin porque las señales de nivel 0 —configuración del
+  # sistema, servicios de accesibilidad, sensores, batería a fondo— no se alcanzan desde
+  # Dart. El manifiesto de Android queda VACÍO: ver android/src/main/AndroidManifest.xml.
+  plugin:
+    platforms:
+      android:
+        package: com.hazling.collection
+        pluginClass: SenalesPlugin
+      # 🔴 iOS SE DECLARA ACÁ O EL CANAL NO EXISTE. Hasta el 2026-09-01 sólo estaba
+      # `android`, así que en iPhone nadie contestaba `hz_collection_sdk/senales` y el
+      # módulo devolvía vacío: cero de 95 campos. En iOS se alcanzan ~33 —el resto no
+      # existe en la plataforma, ver la cabecera de SenalesPlugin.swift.
+      ios:
+        pluginClass: SenalesPlugin

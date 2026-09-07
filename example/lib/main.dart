@@ -1,15 +1,37 @@
 import 'dart:convert';
 
-import 'package:ak_push/ak_push.dart';
+import 'package:hz_collection_sdk/hz_collection_sdk.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 
-import 'personas_de_prueba.dart';
+import 'la_solicitud.dart';
+import 'lo_recolectado.dart';
+import 'llavero.dart';
+import 'nucleo.dart';
+import 'selector_de_comercio.dart';
+
+/// EL NOMBRE VISIBLE DE LA APLICACIÓN.
+///
+/// Sale de un define y no de una constante escrita, por lo mismo que la llave: esta única
+/// aplicación se compila para varios comercios, y un nombre escrito en el código obliga a
+/// tocar el código —y a acordarse de volverlo atrás— cada vez que se compila para otro.
+///
+/// El comercio en sí NO se configura acá: sale de la llave. Esto es sólo la marca que se
+/// lee en la pantalla y en el lanzador.
+const _nombreDeLaApp = String.fromEnvironment('APP_NOMBRE', defaultValue: 'Collection');
 
 /// El `10.0.2.2` es cómo un emulador de Android alcanza el localhost de la
 /// máquina que lo hospeda.
+///
+/// 🔴 EL PUERTO POR OMISIÓN ES 3085 — el back de Collection (`hz-collection-tiers-back`),
+/// que es el único que tiene la ruta `POST /api/v1/ubicacion`. Antes apuntaba a 3096, que
+/// es `ak-push-back` —el repo viejo, abandonado— donde esa ruta no existe: un `flutter run`
+/// sin `--dart-define` mandaba las coordenadas a un back que contesta 404, y como
+/// `reportarUbicacion` se traga el error, no se veía nada. La app quedaba «midiendo bien y
+/// sin enviar» por apuntar al servidor equivocado. El README ya documenta 3085; esto lo
+/// hace coincidir con el default.
 const _llave = String.fromEnvironment('AKPUSH_KEY', defaultValue: 'pk_demo.local');
-const _url = String.fromEnvironment('AKPUSH_URL', defaultValue: 'http://10.0.2.2:3096');
+const _url = String.fromEnvironment('AKPUSH_URL', defaultValue: 'http://10.0.2.2:3085/api/v1');
 
 /// 🔴 ESTO NO VA EN UNA APLICACIÓN DE VERDAD. NUNCA.
 ///
@@ -49,7 +71,7 @@ class DemoApp extends StatelessWidget {
         // configuró en la consola. Sin esta línea todo lo demás anda igual, pero el
         // modal no tiene dónde dibujarse y no aparece.
         navigatorKey: AkPush.navegador,
-        title: 'ak_push',
+        title: _nombreDeLaApp,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2D5F8A)),
           useMaterial3: true,
@@ -66,9 +88,12 @@ class Pantalla extends StatefulWidget {
 
 class _PantallaState extends State<Pantalla> {
   final List<String> _bitacora = [];
+
+  /// Qué pestaña se está mirando: 0 sesión · 1 datos · 2 ubicación · 3 solicitud.
+  int _vista = 0;
   String _estado = 'iniciando…';
   String? _token;
-  PersonaDePrueba? _dentro;
+  PersonaDelNucleo? _dentro;
   ResultadoDeSesion? _sesion;
 
   @override
@@ -84,13 +109,34 @@ class _PantallaState extends State<Pantalla> {
 
   Future<void> _arrancar() async {
     try {
-      // El permiso NO se pide acá: lo decide la política del comercio cuando la
-      // persona inicia sesión. Es el momento en que ya sabe qué es la app.
-      await AkPush.init(
-        llave: _llave,
-        url: _url,
-        pedirPermisoAlIniciar: false,
-      );
+      /// ══ DE QUÉ COMERCIO ARRANCA ═══════════════════════════════════════════════
+      ///
+      /// Con llavero, la aplicación sirve a varios comercios y hay que resolver cuál
+      /// antes de arrancar el SDK. El orden es: el que quedó elegido la última vez, y
+      /// si no hay ninguno —o el que había ya no está en la lista— se pregunta.
+      ///
+      /// Sin llavero se comporta como siempre: el comercio sale de la llave con la que
+      /// se compiló. Eso es lo que hace que este cambio no rompa el uso normal del
+      /// ejemplo ni el de la aplicación de un comercio de verdad.
+      if (hayLlavero) {
+        final elegido = await _resolverComercio();
+        if (elegido == null) {
+          // Se preguntó y no se eligió nada. No se arranca el SDK contra un comercio
+          // que nadie eligió: quedaría midiendo para el de compilación sin que se vea.
+          setState(() => _estado = 'sin comercio elegido');
+          return;
+        }
+        await ComercioActivo.aplicar(elegido, arranqueInicial: true);
+        _anotar('comercio: ${elegido.nombre} (${elegido.slug})');
+      } else {
+        // El permiso NO se pide acá: lo decide la política del comercio cuando la
+        // persona inicia sesión. Es el momento en que ya sabe qué es la app.
+        await AkPush.init(
+          llave: _llave,
+          url: _url,
+          pedirPermisoAlIniciar: false,
+        );
+      }
       setState(() {
         _estado = 'listo';
         _token = AkPush.token;
@@ -107,28 +153,101 @@ class _PantallaState extends State<Pantalla> {
     }
   }
 
-  Future<void> _entrar(PersonaDePrueba p) async {
-    _anotar('entrando como ${p.usuario} (${p.nombre})');
+  /// Cuál comercio usar al arrancar: el recordado, o el que elija la persona.
+  ///
+  /// Si el recordado ya no está en la lista —se le apagó la marca de demostración, o se
+  /// borró— **se vuelve a preguntar** en vez de caer al primero: elegir por su cuenta a
+  /// cuál comercio le escribe los datos es exactamente lo que esta pantalla no debe hacer.
+  Future<ComercioDePrueba?> _resolverComercio() async {
+    final slug = await ComercioActivo.slugRecordado();
+    if (slug != null) {
+      try {
+        final lista = await Llavero.comercios();
+        final recordado = lista.where((c) => c.slug == slug).firstOrNull;
+        if (recordado != null && recordado.llave.isNotEmpty) return recordado;
+        _anotar('el comercio «$slug» ya no está en el llavero — hay que elegir otro');
+      } on ErrorDelLlavero catch (e) {
+        // Sin llavero no se puede resolver nada, y arrancar con el comercio de
+        // compilación mientras la persona cree estar en otro es peor que no arrancar.
+        _anotar(e.mensaje);
+      }
+    }
+    if (!mounted) return null;
+    return Navigator.of(context).push<ComercioDePrueba>(MaterialPageRoute(
+      builder: (_) => const SelectorDeComercio(puedeCancelar: false),
+    ));
+  }
+
+  /// Cambiar de comercio con la aplicación andando. Lo hace el selector; acá sólo se
+  /// refresca lo que la pantalla muestra, porque el SDK ya quedó apuntando al nuevo.
+  Future<void> _cambiarDeComercio() async {
+    final elegido = await Navigator.of(context).push<ComercioDePrueba>(
+      MaterialPageRoute(builder: (_) => const SelectorDeComercio()),
+    );
+    if (elegido == null || !mounted) return;
+    setState(() {
+      // 🔴 `_dentro` TAMBIÉN, y esto se encontró probándolo en el emulador: al cambiar de
+      // comercio la cabecera decía «CrediTotal / MundoTotal» y la tarjeta seguía mostrando
+      // a la persona de Rodar, con su cédula y su identificador. La sesión ya estaba
+      // cerrada del lado del SDK —el teléfono se había dado de baja— así que la pantalla
+      // afirmaba una sesión que no existía, en un comercio donde esa persona ni existe.
+      //
+      // Es el defecto más caro de esta pantalla: mostrar a alguien «adentro» de un
+      // comercio al que no entró es indistinguible de haber entrado de verdad.
+      _dentro = null;
+      _sesion = null;
+      _estado = 'listo';
+      _token = AkPush.token;
+    });
+    _anotar('cambiado a ${elegido.nombre} — el teléfono se dio de baja en el anterior');
+  }
+
+  Future<void> _entrar(PersonaDelNucleo p) async {
+    _anotar('entrando como ${p.nombre} · ${p.cedula}');
     try {
       final r = await AkPush.alIniciarSesion(
-        userId: p.userId,
-        // La cédula. Es lo que le permite a un sistema de afuera pedir un envío sin
-        // conocer el `userId` interno del comercio — que no tiene por qué conocer.
-        identity: p.cedula,
-        identityHash: _firmarComoLoHariaElBackend(p.userId),
+        userId: p.uuid,
+        // Es una empresa, o una persona natural — para las dos empresas del
+        // juego de prueba esto sale en `TipoDeSujeto.juridica`.
+        tipo: p.tipo,
+        // El documento. Es lo que le permite a un sistema de afuera pedir un envío
+        // sin conocer el `userId` interno del comercio — que no tiene por qué
+        // conocer. Reemplaza a la vieja `identity`: ahora declara también la CLASE
+        // (cédula, RIF, pasaporte), no sólo el número.
+        documento: p.documento,
+        // La organización a la que pertenece, si tiene una — los dos empleados de
+        // proveedor del juego de prueba la traen puesta.
+        organizacion: p.organizacion,
+        identityHash: _firmarComoLoHariaElBackend(p.uuid),
         // 🔴 LO QUE EL COMERCIO SABE DE ESTA PERSONA, y que el servicio no puede
         // inventar. Sin esto la consola muestra `u_9000` y nada más: no se puede
         // buscar a nadie por su nombre, ni segmentar un envío por sucursal o por plan.
         //
         // No hay que declarar estos campos en ningún lado: el servicio los DESCUBRE
         // de lo que llega y arma los filtros solo. Cada comercio manda los suyos.
+        /// 🔴 SÓLO LAS COLUMNAS DEL EXCEL — corregido por Juan el 2026-09-04:
+        /// *«esos no son datos míos, yo tengo un UUID o un identificador; apegate a lo que
+        /// tengo en el Excel»*.
+        ///
+        /// Salieron `usuario`, `sucursal` y `plan`, que venían del juego de prueba viejo.
+        /// Inventar columnas que el archivo no tiene es cómo una prueba deja de probar el
+        /// caso real: se filtra por una sucursal que en la cartera de verdad no existe, y el
+        /// filtro pasa igual.
         datos: {
           'nombre': p.nombre,
-          'usuario': p.usuario,
           'correo': p.correo,
-          'sucursal': p.sucursal,
           'ciudad': p.ciudad,
-          'plan': p.plan,
+          // Los cuatro que trajo la reconciliación con notificaciones (2026-09-04).
+          //
+          // 🔴 El teléfono va acá, con los datos, y NO entre los identificadores: la
+          // identidad es el documento. Un teléfono lo pueden compartir dos personas, así
+          // que no identifica a nadie — y Collection manda push, que va al token del
+          // aparato y nunca a un número. Quien direcciona por teléfono es notificaciones, y
+          // allá el teléfono ya tiene su rol declarado.
+          if (p.telefono.isNotEmpty) 'telefono': p.telefono,
+          if (p.pais.isNotEmpty) 'pais': p.pais,
+          if (p.estado.isNotEmpty) 'estado': p.estado,
+          if (p.genero.isNotEmpty) 'genero': p.genero,
         },
       );
       setState(() {
@@ -192,10 +311,10 @@ class _PantallaState extends State<Pantalla> {
   }
 
   Future<void> _elegirPersona() async {
-    final p = await showModalBottomSheet<PersonaDePrueba>(
+    final p = await showModalBottomSheet<PersonaDelNucleo>(
       context: context,
       isScrollControlled: true,
-      builder: (c) => _Selector(),
+      builder: (c) => _Entrada(),
     );
     if (p != null) await _entrar(p);
   }
@@ -220,9 +339,20 @@ class _PantallaState extends State<Pantalla> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ak_push'),
+        // Con varios comercios, el nombre de la aplicación no alcanza: lo que hay que
+        // poder leer de un vistazo es EN CUÁL se está trabajando. Un dato mostrado en
+        // una pantalla que se cambia de comercio sin decir cuál es un dato ambiguo.
+        title: Text(ComercioActivo.actual?.nombre ?? _nombreDeLaApp),
         backgroundColor: t.colorScheme.inversePrimary,
         actions: [
+          // Sólo aparece si esta aplicación se compiló con llavero: en la app de un
+          // comercio de verdad no hay a qué cambiarse.
+          if (hayLlavero)
+            IconButton(
+              onPressed: _cambiarDeComercio,
+              icon: const Icon(Icons.swap_horiz),
+              tooltip: 'Cambiar de comercio',
+            ),
           // 🔴 LA CAMPANITA — una línea, y viene hecha del SDK.
           //
           // Muestra un punto rojo cuando los avisos están apagados, explica al tocarla,
@@ -242,7 +372,43 @@ class _PantallaState extends State<Pantalla> {
           ),
         ],
       ),
-      body: ListView(
+      // ── LAS TRES VISTAS ────────────────────────────────────────────────────
+      //
+      // «Sesión» es lo que había: el estado y quién entró. Las otras dos son para VER lo
+      // que se recolecta — y eso no es una comodidad de la demo: un colector que no le
+      // deja mirar a la persona qué se llevó es lo que hace que la gente desconfíe.
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _vista,
+        onDestinationSelected: (i) => setState(() => _vista = i),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.badge_outlined),
+            selectedIcon: Icon(Icons.badge),
+            label: 'Sesión'),
+          NavigationDestination(
+            icon: Icon(Icons.storage_outlined),
+            selectedIcon: Icon(Icons.storage),
+            label: 'Datos'),
+          NavigationDestination(
+            icon: Icon(Icons.place_outlined),
+            selectedIcon: Icon(Icons.place),
+            label: 'Ubicación'),
+          // 🔴 «Solicitud» es la pestaña donde se prueba el comportamiento, y tiene que
+          // estar en la pantalla y no en una prueba: el tiempo de llenado, el abandono y
+          // el «pegó o escribió» sólo existen si hay dedos sobre un formulario de verdad.
+          NavigationDestination(
+            icon: Icon(Icons.assignment_outlined),
+            selectedIcon: Icon(Icons.assignment),
+            label: 'Solicitud'),
+        ],
+      ),
+      body: _vista == 1
+          ? const LoRecolectado()
+          : _vista == 2
+              ? const DondeEstuvo()
+              : _vista == 3
+              ? const LaSolicitud()
+              : ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Card(
@@ -255,25 +421,68 @@ class _PantallaState extends State<Pantalla> {
                   Text(_estado, style: t.textTheme.headlineSmall),
                   if (_dentro != null) ...[
                     const SizedBox(height: 10),
-                    Text('${_dentro!.usuario} · ${_dentro!.nombre}',
+                    Text(_dentro!.nombre,
                         style: t.textTheme.titleMedium),
-                    Text('${_dentro!.cedula} · ${_dentro!.sucursal} · ${_dentro!.plan}',
+                    // 🔴 CADA COSA CON SU ROTULO. Al poner el identificador acá quedó
+                    // pegado al rótulo «cédula» que ya estaba: la ficha decía
+                    // «cédula 676dc59e8cc125da8f90e289», que es el uuid, mientras la
+                    // cédula de verdad —17229393— salía en el renglón de abajo sin
+                    // rótulo. Dos identificadores distintos con el nombre del otro, en la
+                    // pantalla que se mira para saber con quién se entró.
+                    Text(
+                        'identificador ${_dentro!.uuid}\n'
+                        '${_dentro!.tipo == TipoDeSujeto.juridica ? "RIF" : "cédula"} '
+                        '${_dentro!.cedula} · ${_dentro!.estado}',
                         style: t.textTheme.bodySmall),
+                    // Sólo aparece para los empleados de proveedor del juego de
+                    // prueba: es lo que demuestra que el sujeto PERTENECE a la
+                    // organización sin dejar de ser él mismo.
+                    if (_dentro!.organizacion != null)
+                      Text('de ${_dentro!.organizacion}',
+                          style: t.textTheme.bodySmall
+                              ?.copyWith(fontStyle: FontStyle.italic)),
                   ],
                   if (r != null) ...[
                     const SizedBox(height: 12),
-                    Row(children: [
-                      Icon(r.puedeRecibir ? Icons.check_circle : Icons.cancel,
-                          size: 18,
-                          color: r.puedeRecibir ? Colors.green.shade700 : Colors.orange.shade800),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(r.puedeRecibir ? 'Puede recibir' : 'No puede recibir',
-                            style: t.textTheme.titleSmall),
-                      ),
-                    ]),
-                    const SizedBox(height: 4),
-                    Text(r.motivo, style: t.textTheme.bodySmall),
+                    /*
+                      🔴 SE ESCUCHA `AkPush.avisos`, NO SE LEE `r.puedeRecibir`.
+
+                      `r` es la foto del instante en que se entró. Si después la persona
+                      activa los avisos desde la campanita —o los apaga desde los Ajustes
+                      del teléfono— esta tarjeta seguía diciendo «No puede recibir» sobre
+                      un teléfono que ya recibe. Lo vio Juan en su teléfono el 2026-09-05:
+                      activó el permiso y la tarjeta de afuera no se enteró.
+
+                      El SDK ya publica el estado en un `ValueListenable` y esta pantalla
+                      lo ignoraba: el dato estaba, faltaba escucharlo. Mientras todavía no
+                      publicó nada, vale la foto del inicio de sesión.
+                    */
+                    ValueListenableBuilder<EstadoDeAvisos?>(
+                      valueListenable: AkPush.avisos,
+                      builder: (c, avisos, _) {
+                        final puede = avisos?.puedeRecibir ?? r.puedeRecibir;
+                        final porQue = avisos?.explicacion ?? r.motivo;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              Icon(puede ? Icons.check_circle : Icons.cancel,
+                                  size: 18,
+                                  color: puede
+                                      ? Colors.green.shade700
+                                      : Colors.orange.shade800),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(puede ? 'Puede recibir' : 'No puede recibir',
+                                    style: t.textTheme.titleSmall),
+                              ),
+                            ]),
+                            const SizedBox(height: 4),
+                            Text(porQue, style: t.textTheme.bodySmall),
+                          ],
+                        );
+                      },
+                    ),
                   ],
                   const SizedBox(height: 12),
                   Text('Dirección de este teléfono', style: t.textTheme.labelMedium),
@@ -312,6 +521,16 @@ class _PantallaState extends State<Pantalla> {
           // sucursales, digamos, que es cuando más gente acepta— pone el momento en
           // «laAppDecide» desde la consola y llama a `AkPush.ofrecerUbicacion(context)`
           // donde quiera.
+          // ── QUÉ MODO DE UBICACIÓN QUEDÓ ANDANDO ────────────────────────
+          //
+          // 🔴 Está a la vista y no escondido en el diagnóstico porque el fallo que
+          // esta línea existe para mostrar no se parece a un error: el comercio prende
+          // «segundo plano» en su consola, no pasa nada, y sin esto no hay forma de
+          // enterarse de que a la aplicación le falta un renglón en su manifiesto.
+          if (AkPush.modoDeUbicacionPedido != ModoDeLectura.alEntrar) ...[
+            const SizedBox(height: 16),
+            _LineaDeUbicacion(),
+          ],
           const SizedBox(height: 20),
           Text('Bitácora', style: t.textTheme.labelMedium),
           const Divider(),
@@ -331,60 +550,337 @@ class _PantallaState extends State<Pantalla> {
   }
 }
 
-/// Las cien, con búsqueda. Es lo que demuestra el modelo de identidad: se busca
-/// por nombre —un atributo— y se entra por `userId`.
-class _Selector extends StatefulWidget {
+/// ═══════════════════════════════════════════════════════════════════════════
+/// LA PUERTA — usuario y clave contra el núcleo del comercio
+/// ═══════════════════════════════════════════════════════════════════════════
+///
+/// 🔴 QUÉ CAMBIÓ, Y POR QUÉ · 2026-09-05
+///
+/// Acá había un selector que listaba `cienPersonas`, una constante compilada
+/// dentro del APK. Se tocaba un nombre y se entraba: **sin clave**. Dos
+/// problemas, y ninguno es de estilo:
+///
+/// 1. Para corregir una cédula, agregar una empresa o arreglar un correo había
+///    que **recompilar y volver a repartir el APK**. El juego de prueba era
+///    intocable, que es lo contrario de un juego de prueba.
+/// 2. Elegir de una lista no es entrar. Un sistema de verdad pide usuario y
+///    clave, y la app de prueba tiene que probar ese camino, no uno inventado.
+///
+/// Ahora las personas viven en `hz-mundototal-core`, el sistema de origen del
+/// comercio. La app **no guarda copia**: si el núcleo no contesta, esta pantalla
+/// dice qué ruta falta en vez de fingir que tiene gente.
+///
+/// El directorio lo protege el núcleo, así que hay que presentarle una credencial.
+/// Son dos, y no es lo mismo:
+///
+/// - **La llave de la aplicación** (`--dart-define=NUCLEO_LLAVE=mtk_…`): la trae el
+///   APK compilado. Con ella el directorio se ve de entrada y **tocar un nombre
+///   entra** — sin usuario ni clave. Es lo que Juan pidió el 2026-09-05 para el
+///   APK de demostración.
+/// - **La sesión de una persona**: cuando la copia se compiló sin llave. Ahí el
+///   directorio recién aparece después de entrar.
+class _Entrada extends StatefulWidget {
   @override
-  State<_Selector> createState() => _SelectorState();
+  State<_Entrada> createState() => _EntradaState();
 }
 
-class _SelectorState extends State<_Selector> {
-  String _texto = '';
+class _EntradaState extends State<_Entrada> {
+  final _usuario = TextEditingController();
+  final _clave = TextEditingController();
+  final _busqueda = TextEditingController();
+
+  String? _error;
+  bool _entrando = false;
+
+  List<PersonaDelNucleo>? _directorio;
+  bool _cargandoDirectorio = false;
+  String? _errorDirectorio;
+
+  /// ¿Esta copia se compiló con su propia llave de consulta al núcleo?
+  ///
+  /// Es lo que decide la pantalla entera: con llave, el directorio manda y tocar
+  /// un nombre entra. Sin llave, no hay de dónde sacar la lista antes de tener
+  /// sesión, así que primero hay que entrar con usuario y clave.
+  bool get _conLlave => nucleoLlave.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    // Con llave de aplicación el directorio se puede ver ANTES de entrar: es lo que
+    // permite elegir con quién entrar sin conocer a nadie de antemano. Sin llave,
+    // sólo si ya hay sesión de una vuelta anterior.
+    if (_conLlave || Nucleo.token != null) _traerDirectorio();
+  }
+
+  @override
+  void dispose() {
+    _usuario.dispose();
+    _clave.dispose();
+    _busqueda.dispose();
+    super.dispose();
+  }
+
+  Future<void> _traerDirectorio() async {
+    setState(() { _cargandoDirectorio = true; _errorDirectorio = null; });
+    try {
+      final gente = await Nucleo.directorio(busqueda: _busqueda.text.trim());
+      if (!mounted) return;
+      setState(() { _directorio = gente; _cargandoDirectorio = false; });
+    } on ErrorDelNucleo catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorDirectorio = e.toString();
+        _cargandoDirectorio = false;
+        _directorio = null;
+      });
+    }
+  }
+
+  Future<void> _entrar() async {
+    setState(() { _entrando = true; _error = null; });
+    try {
+      final p = await Nucleo.entrar(_usuario.text.trim(), _clave.text);
+      if (!mounted) return;
+      Navigator.pop(context, p);
+    } on ErrorDelNucleo catch (e) {
+      if (!mounted) return;
+      setState(() { _error = e.toString(); _entrando = false; });
+    }
+  }
+
+  /// El formulario de usuario y clave.
+  ///
+  /// Sigue existiendo con llave compilada, pero abajo y plegado: es el único camino
+  /// que prueba `POST /auth/login` del núcleo de verdad, y borrarlo dejaría esa ruta
+  /// sin nadie que la ejercite.
+  List<Widget> _formularioDeClave(ThemeData t) => [
+        TextField(
+          controller: _usuario,
+          autofocus: !_conLlave,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            labelText: 'Usuario',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _clave,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: 'Clave',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (_) => _entrando ? null : _entrar(),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: t.colorScheme.errorContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(_error!,
+                style: t.textTheme.bodySmall
+                    ?.copyWith(color: t.colorScheme.onErrorContainer)),
+          ),
+        ],
+        const SizedBox(height: 14),
+        FilledButton(
+          onPressed: _entrando ? null : _entrar,
+          child: Text(_entrando ? 'Entrando…' : 'Entrar'),
+        ),
+        const SizedBox(height: 8),
+        Text('La semilla del núcleo trae usuario1 … usuario100, con clave '
+            'admin123.', style: t.textTheme.bodySmall),
+      ];
+
+  /// El directorio: la lista de personas que vive en el núcleo.
+  List<Widget> _bloqueDeDirectorio(ThemeData t) => [
+        Row(
+          children: [
+            Expanded(
+              child: Text(_conLlave ? '¿Con quién entrás?' : 'El directorio',
+                  style: t.textTheme.titleMedium),
+            ),
+            if (_conLlave || Nucleo.token != null)
+              IconButton(
+                onPressed: _cargandoDirectorio ? null : _traerDirectorio,
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Volver a traer',
+              ),
+          ],
+        ),
+        if (!_conLlave && Nucleo.token == null)
+          Text('Se ve después de entrar: el núcleo lo protege con sesión, '
+              'porque es la cartera del comercio.',
+              style: t.textTheme.bodySmall)
+        else ...[
+          if (_conLlave)
+            Text('Tocá un nombre y entrás como esa persona. Esta copia trae su '
+                'propia llave de consulta, así que no hace falta la clave de nadie.',
+                style: t.textTheme.bodySmall),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _busqueda,
+            decoration: const InputDecoration(
+              labelText: 'Buscar por nombre, cédula, ciudad o estado',
+              prefixIcon: Icon(Icons.search),
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            onSubmitted: (_) => _traerDirectorio(),
+          ),
+          const SizedBox(height: 8),
+          if (_cargandoDirectorio)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_errorDirectorio != null)
+            // Nombra la ruta que falta en vez de romperse.
+            Text(_errorDirectorio!,
+                style: t.textTheme.bodySmall
+                    ?.copyWith(color: t.colorScheme.error))
+          else if (_directorio != null)
+            ...[
+              Text('${_directorio!.length} personas',
+                  style: t.textTheme.bodySmall),
+              for (final p in _directorio!)
+                ListTile(
+                  dense: true,
+                  // Las empresas se marcan con RIF y los empleados con su
+                  // organización: son los casos que hay que poder distinguir
+                  // de un vistazo entre las cien.
+                  title: Text(p.tipo == TipoDeSujeto.juridica
+                      ? '${p.nombre} · RIF ${p.cedula}'
+                      : p.organizacion != null
+                          ? '${p.nombre} · ${p.organizacion!.nombre ?? p.organizacion!.codigo}'
+                          : p.nombre),
+                  subtitle: Text('identificador ${p.uuid}\n'
+                      'cédula ${p.cedula} · ${p.estado} · usuario ${p.usuario}'),
+                  trailing: _conLlave ? const Icon(Icons.login, size: 18) : null,
+                  /*
+                    🔴 CON LLAVE, TOCAR ENTRA — pedido de Juan, 2026-09-05:
+                    «que no pida usuario y contraseña».
+
+                    Antes tocar sólo completaba el usuario y había que escribir
+                    `admin123` cien veces. Eso probaba el login del núcleo, sí, pero
+                    el APK es para demostrar Collection —el permiso, el push, la
+                    ubicación—, y la clave era un peaje antes de llegar a lo que se
+                    va a mostrar. El login sigue abajo, plegado, para quien quiera
+                    ejercer ese camino.
+                  */
+                  onTap: () {
+                    if (_conLlave) {
+                      Navigator.pop(context, p);
+                      return;
+                    }
+                    _usuario.text = p.usuario;
+                    FocusScope.of(context).unfocus();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Usuario ${p.usuario} · falta la clave')),
+                    );
+                  },
+                ),
+            ],
+        ],
+      ];
 
   @override
   Widget build(BuildContext context) {
-    // Se busca por las tres vías a la vez y se juntan sin repetir: por nombre
-    // —que es un atributo—, por cédula —que es un alias— y por usuario.
-    final lista = _texto.isEmpty
-        ? cienPersonas
-        : <PersonaDePrueba>{
-            ...buscarPorNombre(_texto),
-            if (porCedula(_texto) != null) porCedula(_texto)!,
-            ...cienPersonas.where((p) => p.usuario.contains(_texto)),
-          }.toList();
+    final t = Theme.of(context);
 
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.8,
-      builder: (c, scroll) => Column(
+      initialChildSize: 0.85,
+      builder: (c, scroll) => ListView(
+        controller: scroll,
+        padding: const EdgeInsets.all(16),
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: TextField(
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Buscar por nombre, cédula o usuario',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
+          Text('Entrar', style: t.textTheme.titleLarge),
+          const SizedBox(height: 4),
+          Text('Las personas viven en el núcleo del comercio, no dentro de esta '
+              'aplicación.\n$nucleoUrl',
+              style: t.textTheme.bodySmall),
+          const SizedBox(height: 16),
+
+          // Con llave, el directorio va PRIMERO y es el camino normal.
+          if (_conLlave) ...[
+            ..._bloqueDeDirectorio(t),
+            const Divider(height: 32),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: Text('Entrar con usuario y clave',
+                  style: t.textTheme.titleMedium),
+              subtitle: Text('El camino que usa una persona de verdad',
+                  style: t.textTheme.bodySmall),
+              children: [
+                const SizedBox(height: 8),
+                ..._formularioDeClave(t),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ] else ...[
+            ..._formularioDeClave(t),
+            const Divider(height: 32),
+            ..._bloqueDeDirectorio(t),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// UNA LÍNEA QUE DICE SI LA LECTURA CONTINUA DE UBICACIÓN QUEDÓ ANDANDO.
+///
+/// Lo que importa que se lea es la diferencia entre lo que el comercio PIDIÓ y lo que está
+/// corriendo. Si son distintos, el motivo va debajo: casi siempre es un permiso que la
+/// aplicación tiene que declarar en su propio manifiesto y no declaró.
+class _LineaDeUbicacion extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final pedido = AkPush.modoDeUbicacionPedido;
+    final activo = AkPush.modoDeUbicacion;
+    final anda = pedido == activo;
+    final n = AkPush.lecturasDeUbicacionDeLaSesion;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: (anda ? t.colorScheme.primary : t.colorScheme.error)
+            .withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(anda ? Icons.my_location : Icons.location_disabled,
+                size: 18,
+                color: anda ? t.colorScheme.primary : t.colorScheme.error),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                anda
+                    ? 'Ubicación · modo ${activo.name} · ${n.leidas} leídas / '
+                        '${n.enviadas} enviadas'
+                    : 'Ubicación · pidió ${pedido.name} y corre ${activo.name}',
+                style: t.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: anda ? null : t.colorScheme.error,
+                ),
               ),
-              onChanged: (v) => setState(() => _texto = v),
             ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              controller: scroll,
-              itemCount: lista.length,
-              itemBuilder: (c, i) {
-                final p = lista[i];
-                return ListTile(
-                  dense: true,
-                  title: Text('${p.usuario} · ${p.nombre}'),
-                  subtitle: Text('${p.cedula} · ${p.sucursal} · ${p.plan}'),
-                  onTap: () => Navigator.pop(c, p),
-                );
-              },
-            ),
-          ),
+          ]),
+          if (!anda && AkPush.porQueNoHayLecturaContinua != null) ...[
+            const SizedBox(height: 6),
+            Text(AkPush.porQueNoHayLecturaContinua!,
+                style: t.textTheme.bodySmall
+                    ?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+          ],
         ],
       ),
     );

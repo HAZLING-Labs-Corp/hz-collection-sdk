@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:ak_push/ak_push.dart';
-import 'package:ak_push/src/permiso.dart' show GestorDePermiso;
+import 'package:hz_collection_sdk/hz_collection_sdk.dart';
+import 'package:hz_collection_sdk/src/permiso.dart' show GestorDePermiso;
 import 'package:firebase_messaging/firebase_messaging.dart'
     show AuthorizationStatus;
 import 'package:flutter_test/flutter_test.dart';

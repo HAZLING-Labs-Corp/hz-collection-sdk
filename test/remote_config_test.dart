@@ -1,5 +1,5 @@
-import 'package:ak_push/ak_push.dart';
-import 'package:ak_push/src/api_client.dart';
+import 'package:hz_collection_sdk/hz_collection_sdk.dart';
+import 'package:hz_collection_sdk/src/api_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -52,6 +52,79 @@ void main() {
       final o = AkPushConfig.fromJson(delServicio).toFirebaseOptions();
       expect(o.projectId, 'mundototal-72162');
       expect(o.appId, '1:859769563262:android:69c967f8f8d0a8c516902f');
+    });
+
+    test('sin `modulos` —una versión vieja del servicio— queda vacío, no rompe', () {
+      final c = AkPushConfig.fromJson(delServicio);
+      expect(c.modulos, isEmpty);
+    });
+  });
+
+  group('el catálogo de módulos', () {
+    /// La forma EXACTA del catálogo que describe el contrato del rediseño.
+    const conModulos = {
+      'ok': true,
+      'version': 1,
+      'firebase': {
+        'projectId': 'mundototal-72162',
+        'appId': '1:859769563262:android:69c967f8f8d0a8c516902f',
+        'apiKey': 'AIza-falsa-para-la-prueba',
+        'messagingSenderId': '859769563262',
+      },
+      'modulos': {
+        'avisos': {
+          'nivel': 1,
+          'cadencia': 'evento',
+          'permisos': ['POST_NOTIFICATIONS'],
+          'estado': 'activo',
+        },
+        'ubicacion': {
+          'nivel': 1,
+          'cadencia': 'periodica',
+          'permisos': ['ACCESS_COARSE_LOCATION'],
+          'estado': 'activo',
+        },
+        'rastreo': {
+          'nivel': 3,
+          'cadencia': 'continua',
+          'permisos': ['ACCESS_BACKGROUND_LOCATION'],
+          'estado': 'declarado',
+        },
+      },
+    };
+
+    test('se parsea con la clave siendo el nombre del módulo', () {
+      final c = AkPushConfig.fromJson(conModulos);
+      expect(c.modulos.keys, containsAll(['avisos', 'ubicacion', 'rastreo']));
+      expect(c.modulos['avisos']!.nivel, 1);
+      expect(c.modulos['avisos']!.cadencia, 'evento');
+      expect(c.modulos['avisos']!.permisos, ['POST_NOTIFICATIONS']);
+    });
+
+    test('«activo» está construido, «declarado» todavía no', () {
+      final c = AkPushConfig.fromJson(conModulos);
+      expect(c.modulos['avisos']!.construido, isTrue);
+      // 🔴 `rastreo` tiene lugar en el modelo pero no está implementado: un
+      // comercio que lo vea acá no puede asumir que hace algo.
+      expect(c.modulos['rastreo']!.construido, isFalse);
+    });
+
+    test('sobrevive a la ida y vuelta del guardado, como el resto de la config', () {
+      final ida = AkPushConfig.fromJson(conModulos);
+      final vuelta = AkPushConfig.fromJson(ida.toJson());
+      expect(vuelta.modulos.keys, ida.modulos.keys);
+      expect(vuelta.modulos['avisos']!.estado, 'activo');
+      expect(vuelta.modulos['rastreo']!.estado, 'declarado');
+    });
+
+    test('un módulo sin permisos declarados no rompe: queda una lista vacía', () {
+      final c = AkPushConfig.fromJson({
+        ...conModulos,
+        'modulos': {
+          'senales': {'nivel': 0, 'cadencia': 'episodica', 'estado': 'declarado'},
+        },
+      });
+      expect(c.modulos['senales']!.permisos, isEmpty);
     });
   });
 

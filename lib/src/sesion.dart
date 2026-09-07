@@ -80,6 +80,16 @@ class HuellaDelRegistro {
   /// Se guarda el resumen y no los datos: la huella se compara, no se lee, y
   /// dejar copiados el nombre y el correo de la persona en el almacenamiento
   /// del teléfono es guardar datos personales que no hacen falta.
+  ///
+  /// 🔴 Esta huella es del alta del TOKEN (`/api/v1/dispositivos`), no del
+  /// alta del SUJETO (`/api/v1/sujetos`). El `tipo`, el `documento` y la
+  /// `organizacion` que se agregaron con el rediseño de colecciones NO viajan
+  /// por acá ni tienen que entrar en este resumen: esa alta no se acota con
+  /// ninguna huella, se llama en CADA inicio de sesión — ver el comentario en
+  /// `AkPush._alIniciarSesion`. Si algún día ese dato empezara a viajar
+  /// TAMBIÉN por el alta del token, ahí sí tendría que entrar acá, o —tal
+  /// como advierte esta nota— un cambio no llegaría nunca al servidor sin que
+  /// ningún error lo delate.
   final String? huellaDeDatos;
 
   /// El resumen que se compara. Las claves van ordenadas para que el mismo mapa

@@ -1,9 +1,9 @@
-import 'package:ak_push/ak_push.dart';
+import 'package:hz_collection_sdk/hz_collection_sdk.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Que el paquete compile no prueba que se pueda USAR desde afuera.
 ///
-/// Un nombre que falta en el `show` de `lib/ak_push.dart` no rompe ni el
+/// Un nombre que falta en el `show` de `lib/hz_collection_sdk.dart` no rompe ni el
 /// análisis ni ninguna prueba interna: todo adentro sigue viéndose. El único que
 /// se entera es quien integra, cuando ya se publicó. Este archivo importa **sólo
 /// la puerta pública** y toca cada cosa que la fachada promete, para que esa

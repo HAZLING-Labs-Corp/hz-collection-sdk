@@ -3,7 +3,23 @@ import 'dart:io' show Platform;
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:permission_handler/permission_handler.dart' show openAppSettings;
+import 'package:app_settings/app_settings.dart' show AppSettings, AppSettingsType;
+
+/// Abre los ajustes de ESTA aplicación en el teléfono.
+///
+/// 🔴 Escrito acá y no traído de `permission_handler` a propósito. Ese paquete declara
+/// `MANAGE_EXTERNAL_STORAGE` y `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` en su manifest, y el
+/// fusionador de Android los inyecta en cualquier aplicación que instale este SDK, los use
+/// o no — el primero además obliga a llenar un formulario especial en Google Play. Un SDK
+/// que se instala en la aplicación de otro no puede cobrarle ese peaje.
+Future<bool> openAppSettings() async {
+  try {
+    await AppSettings.openAppSettings(type: AppSettingsType.notification);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
 /// El permiso de notificaciones, y sobre todo **cuándo** se pide.
 ///
@@ -113,7 +129,7 @@ enum EstadoDelPermiso {
 
 /// Lee, pide y —cuando ya no queda otra— rodea el permiso de notificaciones.
 ///
-/// Envuelve `firebase_messaging` para el estado y `permission_handler` para la
+/// Envuelve `firebase_messaging` para el estado y `app_settings` para la
 /// puerta a los Ajustes. Son dos paquetes pero **una sola autoridad**: el estado
 /// lo dicta siempre Firebase, que es el mismo SDK que emite el token. Preguntar
 /// el estado por dos caminos distintos es la forma de tener dos respuestas que

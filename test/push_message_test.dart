@@ -1,4 +1,4 @@
-import 'package:ak_push/ak_push.dart';
+import 'package:hz_collection_sdk/hz_collection_sdk.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  HTTP EN CLARO, SÓLO CONTRA LA MÁQUINA DE DESARROLLO.
+
+  Android bloquea el tráfico sin cifrar desde la versión 9, y hace bien: una aplicación
+  que acepta HTTP a cualquier destino deja que quien esté en la misma red wifi lea y
+  modifique todo lo que manda.
+
+  Acá se abre una excepción angosta y explícita:
+    · 10.0.2.2  es la máquina anfitriona vista DESDE el emulador de Android. No existe
+                fuera del emulador, así que esta regla no habilita nada en un teléfono real.
+    · localhost es el propio aparato, para cuando se prueba con un túnel.
+
+  🔴 Todo lo demás sigue exigiendo HTTPS, incluido el servicio de producción. Esto es de la
+  aplicación de EJEMPLO, no del SDK: un comercio que instale el paquete no hereda nada de
+  este archivo.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

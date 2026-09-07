@@ -31,9 +31,22 @@ import 'politica.dart';
 /// Si el comercio no escribió nada, se usan estos textos, que están redactados
 /// para que se entienda qué se pide y qué NO se pide.
 class ModalDeUbicacion extends StatelessWidget {
-  const ModalDeUbicacion({super.key, required this.textos, this.marca});
+  const ModalDeUbicacion({
+    super.key,
+    required this.textos,
+    this.marca,
+    this.esSiempre = false,
+  });
 
   final TextosDeUbicacion textos;
+
+  /// Si esta hoja es la SEGUNDA pregunta —la de «siempre»— y no la primera.
+  ///
+  /// 🔴 Cambia el ícono y agrega el renglón que dice a dónde va el botón. Es la diferencia
+  /// que evita el peor final de este flujo: la persona acepta, el sistema la deposita en una
+  /// pantalla de Ajustes que no pidió, no entiende qué fue a buscar y se vuelve. El permiso
+  /// queda igual que antes y nadie se entera de por qué.
+  final bool esSiempre;
 
   /// El color del comercio, si lo declaró. Sin esto el modal sale con el color
   /// del tema de la aplicación, que ya suele ser el correcto.
@@ -59,6 +72,46 @@ class ModalDeUbicacion extends StatelessWidget {
       isDismissible: true,
       backgroundColor: Colors.transparent,
       builder: (c) => ModalDeUbicacion(textos: textos, marca: marca),
+    );
+    return r == true;
+  }
+
+  /// LA SEGUNDA PREGUNTA: «SIEMPRE», QUE NO ES LA MISMA QUE «MIENTRAS USÁS LA APLICACIÓN».
+  ///
+  /// ══ 🔴 POR QUÉ ES OTRA HOJA Y NO LA MISMA CON OTRO TEXTO ══
+  ///
+  /// Porque Android las trata como dos permisos distintos y **prohíbe pedirlos juntos**:
+  /// desde Android 11 el diálogo de «permitir siempre» ni se muestra — el sistema abre la
+  /// pantalla de Ajustes de la aplicación y la persona tiene que elegir «Permitir siempre»
+  /// ahí, a mano, entre otras opciones. iOS 13+ hace lo mismo.
+  ///
+  /// Reusar la hoja de la zona para esto tiene dos finales malos y ninguno bueno: le pide
+  /// que acepte de nuevo algo que ya aceptó, y la deja parada en una pantalla de Ajustes sin
+  /// saber qué fue a buscar. Por eso esta hoja dice explícitamente a dónde la manda el botón.
+  ///
+  /// Se llama **después** de que la de la zona quedó concedida. Antes no sirve de nada: sin
+  /// el permiso de uso, el sistema no ofrece el de siempre.
+  static Future<bool> mostrarSiempre(
+    BuildContext context, {
+    required TextosDeSiempre textos,
+    Color? marca,
+  }) async {
+    final r = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: true,
+      backgroundColor: Colors.transparent,
+      builder: (c) => ModalDeUbicacion(
+        esSiempre: true,
+        marca: marca,
+        textos: TextosDeUbicacion(
+          titulo: textos.titulo,
+          cuerpo: textos.cuerpo,
+          aceptar: textos.aceptar,
+          ahoraNo: textos.ahoraNo,
+          motivos: textos.motivos,
+        ),
+      ),
     );
     return r == true;
   }
@@ -181,7 +234,14 @@ class ModalDeUbicacion extends StatelessWidget {
                 color: color.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.place_outlined, size: 28, color: color),
+              // Otro ícono para la segunda pregunta: dos hojas idénticas seguidas se leen
+              // como un error de la aplicación —«¿no le dije que sí ya?»— y la segunda se
+              // descarta sin leer.
+              child: Icon(
+                esSiempre ? Icons.update_outlined : Icons.place_outlined,
+                size: 28,
+                color: color,
+              ),
             ),
             const SizedBox(height: 20),
             Text(
@@ -219,6 +279,20 @@ class ModalDeUbicacion extends StatelessWidget {
                 ),
               ),
             ),
+            // 🔴 A DÓNDE LLEVA EL BOTÓN, DICHO ANTES DE TOCARLO. El sistema no muestra un
+            // diálogo para «siempre»: abre los Ajustes. Quien no lo sabe se vuelve sin tocar
+            // nada, y desde afuera eso se ve idéntico a un «no».
+            if (esSiempre) ...[
+              Text(
+                'Al tocar el botón se abren los ajustes del teléfono. Ahí elegí '
+                '«Permitir siempre».',
+                style: tema.textTheme.bodySmall?.copyWith(
+                  color: tema.colorScheme.onSurfaceVariant,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             const SizedBox(height: 6),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),

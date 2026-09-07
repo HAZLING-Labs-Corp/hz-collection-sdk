@@ -1,13 +1,19 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier, VoidCallback, debugPrint;
 import 'package:flutter/material.dart'
     show BuildContext, Color, GlobalKey, NavigatorState, Widget;
+/* Sólo lo del ciclo de vida: se importa acotado, como el resto de este archivo, para que se
+   vea de un vistazo qué de Flutter usa el SDK y no se cuele media biblioteca sin querer. */
+import 'package:flutter/widgets.dart'
+    show AppLifecycleState, WidgetsBinding, WidgetsBindingObserver;
 
 import 'api_client.dart';
 import 'campanita.dart';
+import 'comportamiento/comportamiento.dart';
 import 'decision_de_dibujo.dart';
 import 'device_info.dart';
 import 'diagnostico.dart';
@@ -16,12 +22,22 @@ import 'permiso.dart';
 import 'consentimiento.dart';
 import 'politica.dart';
 import 'sesion.dart';
+import 'transmision/cadencia_de_barrido.dart';
 import 'modal_de_ubicacion.dart';
 import 'ubicacion.dart';
+import 'modulos/modulo.dart';
+import 'modulos/modulo_aparato.dart';
+import 'modulos/modulo_autenticidad.dart';
+import 'modulos/modulo_senales.dart';
+import 'modulos/modulo_ubicacion.dart';
+import 'modulos/registro.dart';
 import 'presenter.dart';
 import 'push_message.dart';
 import 'remote_config.dart';
 import 'ruta.dart';
+import 'sujeto.dart';
+import 'transmision/huella_local.dart';
+import 'transmision/politica_de_transmision.dart';
 
 /// Manejador de segundo plano.
 ///
@@ -139,6 +155,29 @@ class AkPush {
   /// callback se puede registrar antes de `init()` sin que nada lo pise.
   final PorteroDeDibujo _portero = PorteroDeDibujo();
 
+  /// LA POLÍTICA DE TRANSMISIÓN — qué se manda y cuándo. Ver
+  /// `transmision/politica_de_transmision.dart`.
+  ///
+  /// Se construye acá y no en `init()` porque no depende de nada del arranque, y porque
+  /// `AkPush.formulario(...)` tiene que poder llamarse desde el `initState` de una pantalla
+  /// sin importar si el SDK ya terminó de arrancar: lo que se anote antes queda en la cola
+  /// igual, y sale cuando haya con quién hablar.
+  PoliticaDeTransmision _politicaDeTransmision = PoliticaDeTransmision.porOmision;
+  PorteroDeEnvio _porteroDeEnvio = PorteroDeEnvio();
+  Comportamiento _comportamiento = Comportamiento();
+
+  /// Cambia la política antes de que nada la haya usado. Se llama sólo desde `init()`, y
+  /// sólo si quien integra pasó una: sin eso, rige la de omisión y nadie ve un cambio.
+  void _adoptarPolitica(PoliticaDeTransmision p) {
+    if (identical(p, _politicaDeTransmision)) return;
+    _politicaDeTransmision = p;
+    _porteroDeEnvio = PorteroDeEnvio(politica: p, huellas: HuellaLocal(comercio: _config?.comercio ?? ''));
+    // El anterior suelta el gancho del ciclo de vida o quedarían dos escuchando, y cada
+    // apertura de la aplicación anotaría dos `SESION_ABRE`.
+    _comportamiento.soltar();
+    _comportamiento = Comportamiento(politica: p);
+  }
+
   String? _token;
   String? _userId;
   EstadoDelPermiso _estado = EstadoDelPermiso.sinPreguntar;
@@ -155,6 +194,14 @@ class AkPush {
   bool _registrado = false;
   DateTime? _registradoEl;
   AkPushError? _ultimoError;
+
+  /// POR QUÉ ESTE ARRANQUE NO TIENE AVISOS, cuando todo lo demás sí funciona.
+  ///
+  /// 🔴 Antes esto no existía porque no hacía falta: sin configuración de Firebase el
+  /// arranque entero fallaba, así que no había un estado intermedio que describir. Desde el
+  /// 2026-09-01 sí lo hay —el SDK recolecta aunque no pueda notificar— y ese estado tiene que
+  /// ser legible, o sería peor que el fallo: una app que parece andar bien y no notifica.
+  AkPushError? _sinAvisosPorque;
 
   final StreamController<PushMessage> _recibidos =
       StreamController<PushMessage>.broadcast();
@@ -254,6 +301,28 @@ class AkPush {
   /// si la aplicación declara algo que sabe por su cuenta.
   static String? get comercio => _yo._config?.comercio;
 
+  /// El catálogo de módulos que el servidor tiene para este comercio —
+  /// `avisos`, `ubicacion`, y los que estén sólo `declarado`s—, con la clave
+  /// siendo el nombre del módulo.
+  ///
+  /// Es sólo lectura: el paquete no construye nada a partir de esto. Sirve
+  /// para que la aplicación pueda mostrar, por ejemplo, qué le falta activar a
+  /// este comercio, sin tener que conocer el catálogo de memoria.
+  static Map<String, InfoDeModulo> get modulos => _yo._config?.modulos ?? const {};
+
+  /// POR QUÉ ESTE ARRANQUE NO TIENE AVISOS, aunque el resto del SDK funcione.
+  ///
+  /// `null` cuando los avisos están en pie. Con valor cuando el SDK arrancó, dio de alta la
+  /// instalación y va a recolectar, pero **no puede notificar** — porque el paquete de esta
+  /// aplicación no está en el inventario del comercio, o porque su configuración de Firebase
+  /// está incompleta del lado del proveedor.
+  ///
+  /// 🔴 Se expone porque, desde que recolectar y notificar están separados, este estado
+  /// intermedio es el más engañoso de todos: la app arranca, los datos llegan, la consola se
+  /// ve viva, y los avisos no salen. Sin un lugar donde preguntarlo, la única forma de
+  /// enterarse es que alguien note que hace días que no le llega nada.
+  static AkPushError? get sinAvisosPorque => _yo._sinAvisosPorque;
+
   /// La aplicación avisa qué contestó la persona **en su propio modal**.
   ///
   /// Hay que llamarlo en los dos casos, no sólo cuando acepta: un «ahora no»
@@ -264,11 +333,178 @@ class AkPush {
   static Future<void> reportarModal({required bool acepto}) =>
       _yo._reportarModal(acepto: acepto);
 
+  /// ANOTA EN EL SERVICIO LO QUE LA PERSONA DECIDIÓ, CON EL TEXTO QUE LEYÓ.
+  ///
+  /// 🔴 Un solo lugar para las dos decisiones —avisos y ubicación— a propósito. Si cada
+  /// una lo llamara por su cuenta, la que se agregue mañana se va a olvidar, y un
+  /// consentimiento que a veces se anota y a veces no es peor que ninguno: hace creer
+  /// que hay registro.
+  ///
+  /// Se traga cualquier fallo. Es telemetría de cumplimiento y **no puede romperle nada
+  /// a la aplicación anfitriona**: si el servicio no contesta, la persona igual tiene que
+  /// poder seguir usando la app. Lo que se pierde es el registro, no la decisión — que
+  /// vive además en el almacén local.
+  /// Corre los módulos que no piden ningún permiso.
+  ///
+  /// 🔴 `avisos` NO pasa por acá y es deliberado: es el único que hoy funciona en
+  /// producción, y moverlo al registro es un cambio con riesgo propio que está anotado
+  /// aparte. Mover la ubicación no podía romper un envío; mover los avisos sí.
+  /// Espera a que no quede ningún diálogo de avisos en pantalla.
+  ///
+  /// No hay una señal del sistema que diga «el diálogo se cerró», así que se mira el estado
+  /// del permiso hasta que deje de ser `sinPreguntar`, con un tope. El tope importa: si la
+  /// persona deja el modal abierto y se va, la ubicación no se le ofrece en esta sesión —
+  /// y eso es mejor que ofrecérsela encima de la pregunta anterior.
+  Future<void> _esperarAQueSeCierreElDeAvisos() async {
+    const paso = Duration(milliseconds: 400);
+    const tope = Duration(seconds: 45);
+    final hasta = DateTime.now().add(tope);
+    while (DateTime.now().isBefore(hasta)) {
+      final e = await _estadoDelPermiso();
+      if (e != EstadoDelPermiso.sinPreguntar) return;
+      await Future<void>.delayed(paso);
+    }
+  }
+
+  /// 🔴 VUELVE A MEDIR CUANDO LA PERSONA VUELVE A LA APLICACIÓN.
+  ///
+  /// Hasta hoy los módulos corrían **una sola vez, al entrar**, y nada más. Dos consecuencias,
+  /// las dos medidas contra la base el 2026-09-06:
+  ///
+  ///   · Si ese único barrido se cortaba, esa persona quedaba con las 18 señales del bloque
+  ///     básico PARA SIEMPRE. Dos de tres personas de un comercio estaban así, y los tres
+  ///     motores decían «0 de 38 reglas» sin que nada dijera por qué.
+  ///   · Y lo que Juan preguntó: *«el dispositivo puede estar hoy con la pantalla prendida y
+  ///     mañana apagada, o en cinco minutos cambió»*. Con una sola medición en la vida, la
+  ///     consola muestra el estado del día que la persona se registró, y lo muestra como si
+  ///     fuera el de ahora.
+  ///
+  /// El observador no mide: pregunta si toca. El freno vive en `_tocaRemedir`, así que volver
+  /// a la aplicación diez veces en un minuto no gasta diez barridos.
+  final _CicloDeVida _ciclo = _CicloDeVida();
+
+  void _mirarElCicloDeVida() {
+    if (_ciclo.montado) return;
+    _ciclo.montado = true;
+    _ciclo.alVolver = () => unawaited(_correrModulos());
+    WidgetsBinding.instance.addObserver(_ciclo);
+  }
+
+  /// Cuándo corrieron los módulos por última vez. Es lo que hace posible una cadencia.
+  DateTime? _ultimoBarrido;
+
+  /// Cuántos campos entregó ese barrido. Con esto se distingue «midió» de «midió bien».
+  int _camposDelUltimoBarrido = 0;
+
+  /// ¿Toca medir de nuevo? La regla vive en `cadencia_de_barrido.dart`, sola y probada.
+  bool _tocaRemedir({DateTime? ahora}) => tocaRemedir(
+        ahora: ahora ?? DateTime.now(),
+        ultimoBarrido: _ultimoBarrido,
+        camposDelUltimoBarrido: _camposDelUltimoBarrido,
+      );
+
+  Future<void> _correrModulos({bool forzado = false}) async {
+    final id = _userId;
+    if (id == null || _api == null) return;
+    if (!forzado && !_tocaRemedir()) return;
+    try {
+      final registro = RegistroDeModulos([
+        ModuloDeAparato(),
+        ModuloDeAutenticidad(),
+        ModuloDeSenales(),
+        /* 🔴 FALTABA, Y ERA CODIGO MUERTO. Medido el 2026-09-07 sobre la app de Rodar:
+           el comercio tenia la ubicacion activa en la consola, el permiso concedido en el
+           telefono, el modulo escrito y probado... y CERO lecturas en Collection. La causa
+           era esta lista: `ModuloDeUbicacion` no se instanciaba en ningun lado del SDK.
+           `grep -rl ModuloDeUbicacion lib/` devolvia un solo archivo, el suyo.
+
+           No fallaba nada. No habia error, ni log, ni bandera: el modulo simplemente no
+           existia en tiempo de ejecucion, asi que la ubicacion no se medía en NINGUNA
+           aplicacion que use este SDK — ni en Rodar ni en Multivalores.
+
+           Es el mismo defecto que su propio comentario describe unas lineas mas abajo para
+           el registro de modulos («HASTA HOY EL REGISTRO DE MODULOS ERA CODIGO MUERTO»):
+           se arreglo para `aparato` y `senales`, y `ubicacion` quedo afuera.
+
+           La politica se pasa como FUNCION y no como valor: el comercio la cambia en
+           caliente desde la consola, y un valor capturado acá dejaria al modulo midiendo
+           con la cadencia de antes hasta que alguien reinicie la aplicacion. */
+        ModuloDeUbicacion(_ubicacion, () => _politicaDeUbicacion, () => navegador),
+      ]);
+      /* 🔴 EL PORTERO SE REARMA CON EL COMERCIO DE AHORA, ANTES DE CORRER LOS MÓDULOS.
+         Es la línea que hace efectivo el arreglo: la huella de lo ya transmitido se guarda por
+         comercio, y sin rearmarlo acá el portero seguiría consultando la del comercio anterior
+         —que fue exactamente el defecto: el teléfono creía haber mandado a mundototal lo que le
+         había mandado a Rodar, y no mandaba nada—. Se rearma en cada barrido y no una sola vez
+         porque el comercio cambia en caliente, sin reiniciar la aplicación. */
+      _porteroDeEnvio = PorteroDeEnvio(
+        politica: _politicaDeTransmision,
+        huellas: HuellaLocal(comercio: _config?.comercio ?? ''),
+      );
+
+      await registro.alEntrar(Contexto(
+        api: _api!,
+        instalacionId: await _almacen.leerOCrearInstalacionId(),
+        sujetoId: id,
+        config: _config,
+        // 🔴 ES LA ÚNICA LÍNEA QUE HACE QUE LA POLÍTICA EXISTA PARA LOS MÓDULOS. Sin ella
+        // los tres se comportan como antes: miden y mandan, siempre. Con ella preguntan
+        // primero, y una medición idéntica a la anterior no gasta una llamada.
+        portero: _porteroDeEnvio,
+      ));
+      /* Se anota DESPUÉS de correr, y con cuántos campos: un barrido que se anota antes de
+         terminar hace que un fallo se lea como un éxito, y el freno de quince minutos taparía
+         justamente el caso que hay que reintentar. */
+      _ultimoBarrido = DateTime.now();
+      _camposDelUltimoBarrido = registro.camposDelUltimoBarrido;
+    } catch (_) {
+      // Ninguna señal vale romperle el inicio de sesión a nadie. Y NO se anota el barrido:
+      // sin anotarlo, el próximo intento entra por la puerta del reintento corto.
+    }
+  }
+
+  Future<void> _anotarConsentimiento({
+    required String categoria,
+    required bool concedido,
+    required String textoMostrado,
+  }) async {
+    final api = _api;
+    if (api == null) return; // sin init() no hay a quién anotarle nada
+    try {
+      await api.anotarConsentimiento(
+        categoria: categoria,
+        concedido: concedido,
+        // Si el comercio no cargó texto propio, se manda el del SDK: lo que hay que
+        // guardar es lo que la persona TUVO DELANTE, no lo que el comercio escribió.
+        textoMostrado: textoMostrado.trim().isEmpty
+            ? '(el texto por omisión del paquete)'
+            : textoMostrado,
+        // La versión de la configuración del comercio. Es lo que permite saber después
+        // si el texto cambió desde que esta persona lo leyó.
+        versionDelTexto: int.tryParse(_config?.version ?? '') ?? 0,
+        sujetoId: _userId,
+        instalacionId: await _almacen.leerOCrearInstalacionId(),
+        versionDeLaApp: _config?.version,
+        plataforma: Platform.isAndroid ? 'android' : (Platform.isIOS ? 'ios' : null),
+      );
+    } catch (_) {
+      // A propósito: ver el comentario de arriba.
+    }
+  }
+
   Future<void> _reportarModal({required bool acepto}) async {
     _consentimiento =
         _consentimiento.conModal(acepto: acepto, cuando: DateTime.now());
     await _almacen.guardarConsentimiento(_consentimiento);
     await _almacen.anotarQueSePregunto();
+
+    // Queda anotado en el servicio, con el texto que tuvo delante. Es la prueba, y sin
+    // ella el registro dice que apretó un botón pero no a qué dijo que sí.
+    await _anotarConsentimiento(
+      categoria: 'avisos',
+      concedido: acepto,
+      textoMostrado: '${politica.textos.titulo}\n${politica.textos.cuerpo}',
+    );
 
     // Un «ahora no» hay que reportarlo al servicio: el comercio necesita
     // distinguirlo de quien nunca vio la pregunta, y sin esto los dos se ven
@@ -282,28 +518,113 @@ class AkPush {
     }
   }
 
+  // ── El comportamiento dentro de la propia aplicación ─────────────────────
+
+  /// EMPIEZA A MIRAR UN FORMULARIO — cuánto tarda en llenarlo y cuántas veces lo deja.
+  ///
+  /// ```dart
+  /// final f = AkPush.formulario('solicitud');      // en initState
+  /// await f.abrir();
+  /// TextField(controller: f.campo('cedula').controlador,
+  ///           focusNode:  f.campo('cedula').foco)
+  /// await f.enviar();                               // al apretar Enviar
+  /// f.dispose();                                    // en dispose
+  /// ```
+  ///
+  /// 🔴 **No se puede detectar solo y por eso se declara.** El SDK no tiene forma de saber
+  /// qué pantalla es «la solicitud» ni cuál de los botones la envía; adivinarlo sería medir
+  /// cualquier cosa y llamarla tiempo de llenado.
+  ///
+  /// 🔴 **Nunca viaja el contenido de un campo.** Ni el texto, ni su largo, ni un hash. Se
+  /// mide *que* pegó la cédula, nunca *qué* cédula pegó. Ver `comportamiento/evento.dart`.
+  ///
+  /// Se puede llamar antes de que `init()` termine: lo que se anote queda en la cola del
+  /// teléfono y sale cuando haya con quién hablar.
+  static ObservadorDeFormulario formulario(String nombre) =>
+      _yo._comportamiento.formulario(nombre);
+
+  /// Cómo está el módulo de comportamiento: cuántos eventos esperan, cuándo salió el último
+  /// lote, y por qué no salió si no salió.
+  static Future<EstadoDelComportamiento> estadoDelComportamiento() =>
+      _yo._comportamiento.estado();
+
+  /// MANDA AHORA LO QUE HAY EN LA COLA. Devuelve cuántos eventos salieron.
+  ///
+  /// 🔴 ES LA EXCEPCIÓN, NO EL CAMINO. La política es que el lote sale **al abrir la
+  /// aplicación** y nada más: una llamada de red por medición se nota en la batería, y el
+  /// SDK ya la hace sola en `init()`. Esto existe para el caso en que el comercio necesita
+  /// el dato en el momento —recién enviada una solicitud de crédito, con el analista
+  /// esperando del otro lado— y no puede aguardar a la próxima apertura.
+  ///
+  /// Llamarla por cada evento devuelve el SDK a lo que hacía antes de que existiera la
+  /// política, y con más pasos.
+  static Future<int> transmitirComportamiento() => _yo._comportamiento.transmitir();
+
+  /// La política de transmisión vigente: los cinco números y sus motivos.
+  static PoliticaDeTransmision get politicaDeTransmision => _yo._politicaDeTransmision;
+
+  /// Lo último que la política decidió de cada módulo, con el motivo en castellano.
+  /// «no se transmitió: nada cambió» es una respuesta correcta, no una falla — y sin esto
+  /// se vería igual que no haber medido.
+  static Map<String, DecisionDeEnvio> get ultimasDecisiones =>
+      Map.unmodifiable(_yo._porteroDeEnvio.ultimaDecision);
+
   // ── El ciclo de sesión ──────────────────────────────────────────────────
 
-  /// Deja este teléfono en orden para esta persona: da de baja a la anterior si
-  /// era otra, resuelve el permiso según lo que configuró el comercio, y
-  /// registra sólo si hace falta.
+  /// Deja este teléfono en orden para esta persona: da de alta al SUJETO, da
+  /// de baja a la anterior si era otra, resuelve el permiso según lo que
+  /// configuró el comercio, y registra el módulo de avisos sólo si hace falta.
   ///
   /// Es lo que hay que llamar al iniciar sesión. Devuelve el resumen de cómo
   /// quedó, que es lo que la aplicación necesita para decidir qué mostrar.
+  ///
+  /// [tipo] si el sujeto es una persona natural o jurídica (empresa). Por
+  /// omisión, natural.
+  ///
+  /// [documento] su documento de identidad —cédula, RIF, pasaporte—. Es lo que
+  /// permite que un sistema de afuera pida un envío por cédula sin conocer el
+  /// [userId] interno del comercio.
+  ///
+  /// [organizacion] la organización a la que PERTENECE, si tiene una —por
+  /// ejemplo, un empleado de un proveedor—. No reemplaza al sujeto: cuelga de
+  /// él.
+  ///
   /// [datos] es lo que el comercio sabe de esta persona —nombre, sucursal, plan,
   /// segmento— y que nosotros no podemos inventar. Sin esto, la consola muestra
   /// un identificador opaco y no hay forma de buscar a nadie ni de segmentar un
   /// envío. Se manda en cada inicio de sesión, no una sola vez: la sucursal de
   /// una persona cambia, y el plan más todavía.
+  ///
+  /// [identityHash] es la firma que calcula el backend del comercio sobre el
+  /// [userId]. El servicio la verifica cuando el comercio activó ese modo.
+  ///
+  /// 🔴 **Es el corazón del rediseño**: el sujeto se da de alta ANTES de tocar
+  /// ningún permiso. Hasta acá, quien decía que no a los avisos no quedaba
+  /// anotado en ningún lado —sin permiso no hay token, y sin token no había
+  /// alta—. Después de esta llamada esa persona existe para el sistema con su
+  /// aparato enlazado, aunque el permiso quede en «denegado».
   static Future<ResultadoDeSesion> alIniciarSesion({
     required String userId,
-    String? identityHash,
-    String? identity,
+    TipoDeSujeto tipo = TipoDeSujeto.natural,
+    Documento? documento,
+    Organizacion? organizacion,
     Map<String, dynamic>? datos,
+    String? identityHash,
+    @Deprecated(
+      'Usá `documento: Documento(clase: ClaseDeDocumento.cedula, numero: '
+      '...)` en su lugar. Se sigue traduciendo sola —no se rompe nada— pero '
+      'sólo alcanza para cédulas: con `documento` se declara la clase real '
+      '(rif, pasaporte, otro) desde el arranque.',
+    )
+    String? identity,
   }) =>
       _yo._alIniciarSesion(
         userId: userId,
+        tipo: tipo,
+        documento: documento,
+        organizacion: organizacion,
         identityHash: identityHash,
+        // ignore: deprecated_member_use_from_same_package
         identity: identity,
         datos: datos,
       );
@@ -329,6 +650,65 @@ class AkPush {
 
   /// La política que configuró el comercio para la ubicación.
   static PoliticaDeUbicacion get politicaDeUbicacion => _yo._politicaDeUbicacion;
+
+  // ── Lectura continua ─────────────────────────────────────────────────────
+  //
+  // 🔴 LOS TRES MODOS SON TRES COSAS DISTINTAS. Ver [ModoDeLectura] antes de tocar nada:
+  // uno no pide permiso, otro tampoco, y el tercero exige permisos que **este paquete no
+  // declara** y que sacan de Google Play a una financiera que los declare.
+
+  /// Qué está corriendo AHORA. **No es lo que el comercio pidió**: si pidió segundo plano y
+  /// la aplicación no declaró el permiso, acá dice [ModoDeLectura.alEntrar] y
+  /// [porQueNoHayLecturaContinua] dice por qué.
+  static ModoDeLectura get modoDeUbicacion => _yo._ubicacion.modoActivo;
+
+  /// Lo que el comercio pidió, aunque no se haya podido.
+  static ModoDeLectura get modoDeUbicacionPedido => _yo._ubicacion.modoPedido;
+
+  /// Por qué el modo pedido no está corriendo. `null` = está corriendo.
+  static String? get porQueNoHayLecturaContinua =>
+      _yo._ubicacion.modoActivo == _yo._ubicacion.modoPedido
+          ? null
+          : _yo._ubicacion.ultimoMotivo;
+
+  /// ¿LA APLICACIÓN ANFITRIONA DECLARÓ LO QUE HACE FALTA PARA EL SEGUNDO PLANO?
+  ///
+  /// 🔴 Si devuelve `false`, el modo de segundo plano **no va a andar por más que el
+  /// comercio lo prenda en la consola**, y lo que falta está en [faltaDeclararParaElFondo].
+  /// Se declara en el manifiesto de la APLICACIÓN, nunca en el del SDK: ver el README.
+  static Future<bool> get sePuedeUbicacionEnSegundoPlano =>
+      _yo._ubicacion.sePuedeEnSegundoPlano;
+
+  /// Qué renglones le faltan al manifiesto de la aplicación. Sólo tiene valor después de
+  /// consultar [sePuedeUbicacionEnSegundoPlano].
+  static List<String> get faltaDeclararParaElFondo => _yo._ubicacion.faltaDeclarar;
+
+  /// ¿La persona dio el «Permitir siempre»? Es OTRO permiso que el de la zona.
+  static Future<bool> get tieneUbicacionSiempre => _yo._ubicacion.tieneSiempre;
+
+  /// CUÁNTAS LECTURAS DEJÓ ESTA SESIÓN, y cuántas de ellas salieron hacia el servicio.
+  ///
+  /// Existe para poder **medir** el efecto de un modo en vez de creerlo. `enviadas` es
+  /// siempre menor o igual: una lectura que llega antes del intervalo se descarta acá y
+  /// nunca toca la red.
+  static ({int leidas, int enviadas}) get lecturasDeUbicacionDeLaSesion => (
+        leidas: _yo._ubicacion.lecturasDeLaSesion,
+        enviadas: _yo._ubicacion.enviosDeLaSesion,
+      );
+
+  /// Corta la lectura continua y vuelve al modo de siempre. La aplicación puede llamarla
+  /// cuando quiera —una pantalla de «pausar el seguimiento», por ejemplo—; el SDK la llama
+  /// sola al cerrar sesión.
+  static Future<void> detenerLecturaContinua() =>
+      _yo._ubicacion.detenerContinuo();
+
+  /// LE OFRECE EL «SIEMPRE», CON LA SEGUNDA HOJA. Devuelve si quedó concedido.
+  ///
+  /// El SDK la llama solo al iniciar sesión cuando el comercio puso el modo en
+  /// [ModoDeLectura.enSegundoPlano]. Esta versión pública es para el comercio que prefiera
+  /// pedirlo en su propio momento.
+  static Future<bool> ofrecerUbicacionSiempre([BuildContext? context]) =>
+      _yo._ofrecerSiempre(context: context, forzar: true);
 
   /// LE OFRECE A LA PERSONA COMPARTIR SU ZONA, CON EL MODAL DEL SDK.
   ///
@@ -416,14 +796,33 @@ class AkPush {
         return false;
       }
 
-      final quiere = await ModalDeUbicacion.mostrar(
-        ctx,
-        textos: _politicaDeUbicacion.textos,
+      final textos = _politicaDeUbicacion.textos;
+      final quiere = await ModalDeUbicacion.mostrar(ctx, textos: textos);
+
+      // 🔴 SE ANOTA EL «NO» IGUAL QUE EL «SÍ», y esa simetría importa: sin el rechazo
+      // anotado, alguien que dijo que no y alguien a quien nunca se le preguntó se ven
+      // idénticos —los dos sin registro— y son dos situaciones opuestas. A la primera hay
+      // que dejarla en paz; a la segunda hay que preguntarle.
+      final queLeyo = '${textos.titulo}\n${textos.cuerpo}';
+      await _anotarConsentimiento(
+        categoria: 'ubicacion',
+        concedido: quiere,
+        textoMostrado: queLeyo,
       );
       if (!quiere) return false;
 
       final concedido = await _ubicacion.pedir();
-      if (!concedido) return false;
+      if (!concedido) {
+        // Aceptó en nuestro modal y después dijo que no en el del sistema. Es un «no» y
+        // se anota como tal: el consentimiento vale por lo que terminó pasando, no por lo
+        // que la persona contestó a mitad de camino.
+        await _anotarConsentimiento(
+          categoria: 'ubicacion',
+          concedido: false,
+          textoMostrado: queLeyo,
+        );
+        return false;
+      }
 
       // 🔴 EL PERMISO NO ALCANZA: FALTA QUE EL TELÉFONO TENGA LA UBICACIÓN PRENDIDA.
       //
@@ -456,6 +855,142 @@ class AkPush {
     }
   }
 
+  /// LA SEGUNDA PREGUNTA — «SIEMPRE» — CON SU PROPIA HOJA Y SU PROPIO RELOJ.
+  ///
+  /// ══ 🔴 POR QUÉ NO SE PIDE JUNTO CON LA PRIMERA ══
+  ///
+  /// Porque no se puede. Desde Android 11 el sistema **no muestra** el diálogo de «permitir
+  /// siempre» a una aplicación que no tenga ya el de «mientras se usa», y aun teniéndolo, lo
+  /// que abre es la pantalla de Ajustes para que la persona lo elija a mano. iOS 13+ obliga
+  /// a la misma secuencia. Pedir los dos juntos no es una mala práctica: es una pantalla que
+  /// no aparece.
+  ///
+  /// Y aunque se pudiera, no se haría: son dos preguntas de tamaño distinto. «Mi zona
+  /// mientras uso la aplicación» y «mi zona todo el día» no se contestan igual, y meterlas
+  /// en un solo modal es la forma de conseguir un sí que la persona no dio.
+  ///
+  /// `forzar` distingue las dos entradas, igual que en [_ofrecerUbicacion]: la automática
+  /// respeta el reloj de reinsistencia, la que pide la aplicación no.
+  Future<bool> _ofrecerSiempre({
+    BuildContext? context,
+    required bool forzar,
+  }) async {
+    try {
+      if (await _ubicacion.tieneSiempre) return true;
+
+      // 🔴 EL ORDEN NO ES NEGOCIABLE. Sin el permiso de uso, esto no muestra nada.
+      if (!await _ubicacion.concedido) return false;
+
+      // Y si la aplicación no lo declaró, la hoja sería una promesa que el sistema no puede
+      // cumplir: la persona acepta, se abren los Ajustes, y la opción «Permitir siempre»
+      // sencillamente no está ahí.
+      if (!await _ubicacion.sePuedeEnSegundoPlano) {
+        assert(() {
+          debugPrint(
+            '[collection] No se ofrece el «siempre»: la aplicación no declaró '
+            '${_ubicacion.faltaDeclarar.join(", ")}. Se declara en el manifiesto de la '
+            'APLICACIÓN, no en el del SDK. Ver el README, «Ubicación continua».',
+          );
+          return true;
+        }());
+        return false;
+      }
+
+      if (!forzar) {
+        final desde = await _almacen.desdeLaUltimaOfertaDeSiempre();
+        if (desde != null &&
+            desde.inDays < _politicaDeUbicacion.reintentarCadaDias) {
+          return false;
+        }
+      }
+
+      // Se anota antes de mostrar, por lo mismo que la primera oferta: si la persona mata la
+      // aplicación con la hoja abierta, no se le vuelve a aparecer en cada arranque.
+      await _almacen.guardarOfertaDeSiempre(DateTime.now());
+
+      final ctx = context ?? navegador.currentContext;
+      if (ctx == null || !ctx.mounted) {
+        assert(() {
+          debugPrint(
+            '[collection] El comercio pidió ubicación en segundo plano, pero el SDK no '
+            'tiene dónde dibujar la segunda hoja. Agregá «navigatorKey: AkPush.navegador» '
+            'a tu MaterialApp, o llamá a AkPush.ofrecerUbicacionSiempre(context) vos mismo.',
+          );
+          return true;
+        }());
+        return false;
+      }
+
+      final textos = _politicaDeUbicacion.textosDeSiempre;
+      final quiere = await ModalDeUbicacion.mostrarSiempre(ctx, textos: textos);
+
+      // Categoría propia: «aceptó la zona» y «aceptó que la midan todo el día» son dos
+      // consentimientos distintos y no pueden quedar guardados como el mismo. Si mañana
+      // alguien reclama, lo que hay que poder mostrar es qué texto tuvo delante para CADA
+      // uno.
+      final queLeyo = '${textos.titulo}\n${textos.cuerpo}';
+      await _anotarConsentimiento(
+        categoria: 'ubicacion_siempre',
+        concedido: quiere,
+        textoMostrado: queLeyo,
+      );
+      if (!quiere) return false;
+
+      final concedido = await _ubicacion.pedirSiempre();
+      if (!concedido) {
+        // Aceptó la hoja y después no eligió «Permitir siempre» en los Ajustes. Cuenta como
+        // un «no»: el consentimiento vale por lo que terminó pasando.
+        await _anotarConsentimiento(
+          categoria: 'ubicacion_siempre',
+          concedido: false,
+          textoMostrado: queLeyo,
+        );
+      }
+      return concedido;
+    } catch (_) {
+      // Nunca tumba nada, por lo mismo que todo lo demás de este módulo.
+      return false;
+    }
+  }
+
+  /// PRENDE EL MODO DE LECTURA QUE ELIGIÓ EL COMERCIO.
+  ///
+  /// 🔴 SI NO SE PUEDE, SE APAGA Y QUEDA ESCRITO POR QUÉ. Ver
+  /// [Ubicacion.arrancarContinuo]: el motivo va a [Ubicacion.ultimoMotivo] y sale en el
+  /// diagnóstico. El fallo que hay que evitar acá es el comercio que prende «segundo plano»,
+  /// ve el interruptor en verde, espera quince días y no tiene ni una lectura.
+  Future<void> _arrancarLecturaContinua(String userId) async {
+    try {
+      final p = _politicaDeUbicacion;
+      if (!p.activa || p.modo == ModoDeLectura.alEntrar) {
+        await _ubicacion.detenerContinuo();
+        return;
+      }
+
+      // La zona primero, siempre. Sin ella no hay nada que leer en ningún modo.
+      if (!await _ubicacion.concedido) {
+        _ubicacion.modoPedido = p.modo;
+        return;
+      }
+
+      // Y para el fondo, la segunda pregunta. Va acá y no adentro de `arrancarContinuo`
+      // porque pedir un permiso es dibujar una pantalla, y `Ubicacion` no dibuja.
+      if (p.modo == ModoDeLectura.enSegundoPlano &&
+          !await _ubicacion.tieneSiempre) {
+        await _ofrecerSiempre(forzar: false);
+      }
+
+      await _ubicacion.arrancarContinuo(
+        userId: userId,
+        modo: p.modo,
+        cada: p.cada,
+        textos: p.textosDeSiempre,
+      );
+    } catch (_) {
+      // Ninguna lectura vale romperle el inicio de sesión a nadie.
+    }
+  }
+
   /// Lee y manda dónde está, si hay permiso y si pasó el tiempo mínimo.
   ///
   /// Devuelve si mandó algo. Nunca lanza: perder una posición cuesta un dato de
@@ -468,6 +1003,56 @@ class AkPush {
 
   /// Cierra el ciclo: da de baja el teléfono y limpia la barra de estado.
   static Future<void> alCerrarSesion() => _yo._logout();
+
+  /// ══ CAMBIAR DE COMERCIO — para una aplicación que sirve a varios ═══════════
+  ///
+  /// Escrito el 2026-09-06. Existe para la aplicación de prueba, que tiene que poder
+  /// moverse entre los comercios de ejemplo sin recompilarse; y sirve a cualquier
+  /// aplicación que atienda a más de un comercio con el mismo binario.
+  ///
+  /// 🔴 NO ALCANZA CON LLAMAR A `init()` OTRA VEZ, Y ESTE ES EL MOTIVO.
+  ///
+  /// `init()` descarta la cuenta anterior sólo cuando **la versión de la configuración
+  /// cambió** (`cacheada.version != config.version`). Eso alcanza para un comercio que
+  /// edita su ficha, y NO alcanza para cambiar de comercio: dos comercios distintos pueden
+  /// tener su configuración en la misma versión —el contador es de cada uno— y entonces:
+  ///
+  ///   · el token viejo se conserva, y **un token sólo vale en el proyecto que lo emitió**:
+  ///     el registro sale bien, la consola muestra el aparato, y el aviso no llega nunca;
+  ///   · si además los proyectos de Firebase son distintos, `_iniciarFirebase` encuentra la
+  ///     app ya inicializada con otro `appId` y **tumba el arranque** con «la aplicación ya
+  ///     inicializó Firebase con otra cuenta».
+  ///
+  /// Así que el cambio de comercio se dice, no se deduce. Acá se da de baja el teléfono en
+  /// el comercio que se deja —si no, queda registrado en los dos y recibe los avisos de
+  /// ambos—, se descarta la cuenta anterior entera (token, apps de Firebase y sesión) y se
+  /// arranca de cero contra la llave nueva.
+  ///
+  /// Devuelve cuando el SDK ya está andando con el comercio nuevo. Si la llave nueva es
+  /// inválida, lanza igual que `init()`: es preferible a quedar a mitad de camino sin
+  /// avisar, con la baja del anterior ya hecha.
+  static Future<void> cambiarDeComercio({
+    required String llave,
+    String? url,
+    bool pedirPermisoAlIniciar = false,
+  }) async {
+    // La baja va primero y con red: después de descartar el token no hay con qué darla.
+    await _yo._logout();
+    await _yo._descartarCuentaAnterior();
+    // También la configuración cacheada: es del comercio que se deja, y `init()` la usa
+    // para decidir si descartar. Dejarla haría que el arranque nuevo se compare contra la
+    // ficha de otro comercio.
+    await _yo._almacen.olvidarConfig();
+    _yo._config = null;
+    await _yo._init(
+      apiKey: llave,
+      baseUrl: url,
+      // Por omisión NO se vuelve a pedir el permiso: la persona ya lo contestó en este
+      // teléfono, y volver a pedirlo en cada cambio de comercio es la forma más rápida de
+      // que lo niegue para siempre. La política del comercio nuevo decide igual.
+      pedirPermisoAlIniciar: pedirPermisoAlIniciar,
+    );
+  }
 
   // ── Arranque ────────────────────────────────────────────────────────────
 
@@ -513,12 +1098,20 @@ class AkPush {
     String? url,
     bool pedirPermisoAlIniciar = true,
     PoliticaDeNotificaciones? politicaPorDefecto,
+    /// CUÁNDO SE TRANSMITE LO QUE SE MIDE. Si no se pasa, rige la de omisión: por lote al
+    /// abrir, sólo si algo cambió, y todo igual cada siete días.
+    ///
+    /// El uso previsto es uno solo y es el de volver atrás:
+    /// `politicaDeTransmision: PoliticaDeTransmision.comoEstabaAntes` deja el SDK midiendo
+    /// y mandando siempre, como antes de que la política existiera.
+    PoliticaDeTransmision? politicaDeTransmision,
   }) =>
       _yo._init(
         apiKey: llave,
         baseUrl: url,
         pedirPermisoAlIniciar: pedirPermisoAlIniciar,
         politicaPorDefecto: politicaPorDefecto,
+        politicaDeTransmision: politicaDeTransmision,
       );
 
   Future<void> _init({
@@ -526,7 +1119,11 @@ class AkPush {
     String? baseUrl,
     bool pedirPermisoAlIniciar = true,
     PoliticaDeNotificaciones? politicaPorDefecto,
+    PoliticaDeTransmision? politicaDeTransmision,
   }) async {
+    // Antes que nada: la política tiene que estar puesta antes de que se anote el primer
+    // evento, o el primero se mediría con una y el resto con otra.
+    if (politicaDeTransmision != null) _adoptarPolitica(politicaDeTransmision);
     // La que declara la aplicación rige mientras el servicio no mande la suya.
     // Cuando la mande, gana la del servidor: la decisión es del comercio, y el
     // sentido de servirla es que la cambie sin publicar una versión nueva.
@@ -534,6 +1131,7 @@ class AkPush {
     // Un reintento que funciona no puede seguir reportando el error de la vez
     // pasada: el diagnóstico diría que está roto algo que ya se arregló.
     _ultimoError = null;
+    _sinAvisosPorque = null;
 
     try {
       final datos = await DatosDelDispositivo.recolectar();
@@ -549,9 +1147,73 @@ class AkPush {
 
       _consentimiento = await _almacen.leerConsentimiento();
 
+      // ══ PRIMERO SE PREGUNTA, DESPUÉS SE MANDA ═════════════════════════════
+      //
+      // 🔴 EL ORDEN ESTABA AL REVÉS Y ERA UN AGUJERO DE VERDAD.
+      //
+      // `_registrarInstalacion` corría ACÁ ARRIBA, antes de resolver la
+      // configuración: el primer envío de cada arranque salía con los datos del
+      // aparato **sin haber preguntado nada al comercio**. Por más que la
+      // perilla estuviera apagada, el aparato ya había viajado — y el descarte
+      // del otro lado no devuelve la batería ni el tráfico que costó.
+      //
+      // Ahora la configuración se resuelve primero. Sigue sin esperar al
+      // permiso ni a que alguien inicie sesión —el aparato existe antes que el
+      // sujeto, eso no cambia—, pero ya sabe qué le permitieron antes de hablar.
       final cacheada = await _almacen.leer();
-      final config =
-          await _resolverConfig(datos.identificadorDePaquete, cacheada);
+
+      // ══ RECOLECTAR Y NOTIFICAR SON COSAS SEPARADAS ════════════════════════
+      //
+      // 🔴 ANTES, LA FALTA DE FIREBASE APAGABA TODO EL SDK. `_resolverConfig`
+      // propagaba el desacuerdo de paquete y `init()` moría ahí: no se daba de
+      // alta la instalación, no corrían los módulos, no se medía ni una señal.
+      // Un comercio que sólo quisiera recolectar datos quedaba obligado a tener
+      // un proyecto de Firebase configurado, y una app iOS sin registrar perdía
+      // también la ubicación y la autenticidad, que no tienen nada que ver.
+      //
+      // Medido el 2026-09-01: la app de Multivalores en iPhone no reportaba NADA
+      // —cero campos de aparato, cero señales— y la única causa era que su
+      // paquete de iOS no estaba en el inventario del comercio.
+      //
+      // Ahora el desacuerdo de paquete deja el SDK andando **sin avisos**, y se
+      // anota por qué. Lo que sí sigue tumbando el arranque es una llave
+      // rechazada: sin credencial válida no hay nada que hacer del otro lado, y
+      // seguir sería fingir que se está recolectando.
+      AkPushConfig? config;
+      try {
+        config = await _resolverConfig(datos.identificadorDePaquete, cacheada);
+      } on AkPushError catch (e) {
+        if (e.code != AkPushErrorCode.appMismatch) rethrow;
+        _sinAvisosPorque = e;
+        // También en `_ultimoError`, que es lo que ya lee el diagnóstico. Que el SDK
+        // esté recolectando no vuelve esto un detalle: los avisos NO funcionan.
+        _ultimoError = e;
+      }
+
+      // La instalación nace acá: sin token —todavía no se pidió permiso— y sin
+      // sujeto —todavía no entró nadie—.
+      await _registrarInstalacion(datos);
+
+      // ══ EL COMPORTAMIENTO: SE ABRE LA SESIÓN Y SALE EL LOTE DE LA VEZ PASADA ═══════
+      //
+      // 🔴 ACÁ Y NO MÁS ABAJO, a propósito: abajo está el `return` de cuando no hay
+      // configuración, y el comportamiento tiene que medirse igual. Un comercio al que le
+      // falta el paquete registrado —o que todavía no tiene Firebase— pierde los avisos,
+      // no la serie de comportamiento, que es lo único que no depende de nadie más.
+      //
+      // 🔴 Y NO SE ESPERA. Es lo único que se hace con la red en este punto del arranque,
+      // y el arranque es la parte que la persona mira esperando. Si no hay señal, los
+      // eventos se quedan en el teléfono y salen la próxima vez: la cola vive en el disco
+      // justamente para eso. Que falle no puede costar un milisegundo de pantalla.
+      await _comportamiento.arrancar(
+        api: _api!,
+        instalacionId: await _almacen.leerOCrearInstalacionId(),
+        config: config,
+        // Quien haya quedado logueado sigue estándolo hasta que cierre sesión, así que el
+        // `SESION_ABRE` de esta apertura es suyo. Ver la nota de `sujetoConocido`.
+        sujetoConocido: await _almacen.leerUsuario(),
+      );
+      unawaited(_comportamiento.transmitir());
 
       // 🔴 La cuenta cambió. Un token de FCM solo vale dentro del proyecto que
       // lo emitió, así que el que tenemos guardado ya no sirve para nada — y si
@@ -560,6 +1222,13 @@ class AkPush {
       // remota, y el único momento en que se puede atajar es acá.
       // El servidor manda. Si todavía no sirve el campo, `config.politica` es la
       // de siempre y no piso lo que declaró la aplicación.
+      if (config == null) {
+        // Sin configuración no hay avisos, y no hay nada más que preparar acá: la
+        // instalación ya quedó dada de alta arriba y los módulos corren al iniciar
+        // sesión, que es donde siempre corrieron.
+        return;
+      }
+
       if (config.trajoPolitica) _politica = config.politica;
       _politicaDeUbicacion = config.ubicacion;
 
@@ -573,12 +1242,25 @@ class AkPush {
       await _almacen.guardar(config);
 
       _estado = pedirPermisoAlIniciar
-          ? await _permiso.pedir()
+          ? await _pedirAlSistemaYAnotar()
           : await _permiso.estadoActual();
       await _obtenerToken(descartarElViejo: cambio);
 
+      // 🔴 LA DIRECCIÓN ES DE LA INSTALACIÓN, ASÍ QUE SE MANDA APENAS SE TIENE.
+      //
+      // La instalación se dio de alta más arriba, cuando todavía no había token: primero
+      // se pide la configuración, después se inicia Firebase, y recién ahí hay dirección.
+      // Sin esta línea el token se queda en el teléfono hasta que alguien inicie sesión —
+      // y una aplicación donde nadie se loguea figura «sin token» para siempre.
+      //
+      // Medido el 2026-08-31 integrando el SDK en una aplicación de verdad: arrancó,
+      // registró la instalación, obtuvo su token, y en la consola aparecía sin dirección.
+      // No estaba roto: nadie se lo había contado al servidor.
+      await _reportarLaDireccion();
+
       await Presentador.instancia.iniciar();
       _escuchar();
+      _mirarElCicloDeVida();
       await _procesarArranqueEnFrio();
     } on AkPushError catch (e) {
       // Se guarda ANTES de propagarlo. El error de `init()` se le tira a quien
@@ -619,6 +1301,46 @@ class AkPush {
         return cacheada;
       }
       rethrow;
+    }
+  }
+
+  /// Da de alta —o actualiza— el APARATO en el modelo nuevo.
+  ///
+  /// 🔴 NUNCA TUMBA EL ARRANQUE. Sin red en el primerísimo arranque, la
+  /// instalación queda sin dar de alta y se reintenta sola en el próximo
+  /// `init()` — es upsert por `instalacionId`, así que reintentar no duplica
+  /// nada. Se anota el error para el diagnóstico y se sigue: éste es un dato
+  /// de inventario del aparato, no el permiso ni el token, y perderlo un
+  /// arranque no le cuesta un aviso a nadie.
+  Future<void> _registrarInstalacion(DatosDelDispositivo datos) async {
+    try {
+      final instalacionId = await _almacen.leerOCrearInstalacionId();
+      await _api!.registrarInstalacion(
+        instalacionId: instalacionId,
+        aparato: datos.toJson(),
+      );
+    } catch (e) {
+      _ultimoError = e is AkPushError ? e : null;
+    }
+  }
+
+  /// Le cuenta al servidor la dirección de ESTA instalación, sin necesidad de que haya
+  /// nadie logueado. El token pertenece al aparato; el sujeto es otra cosa.
+  ///
+  /// No tumba nada si falla: quedará sin dirección hasta el próximo arranque o hasta que
+  /// alguien inicie sesión, que es exactamente como estaba antes.
+  Future<void> _reportarLaDireccion() async {
+    if (_token == null || _api == null) return;
+    try {
+      await _api!.actualizarAvisosDeInstalacion(
+        instalacionId: await _almacen.leerOCrearInstalacionId(),
+        token: _token!,
+        plataforma: Platform.isIOS ? 'ios' : 'android',
+        permiso: _estado.permiteRecibir,
+        estadoDelPermiso: _estado.name,
+      );
+    } catch (e) {
+      _ultimoError = e is AkPushError ? e : null;
     }
   }
 
@@ -832,11 +1554,50 @@ class AkPush {
     return _publicarAvisos(e);
   }
 
-  Future<EstadoDelPermiso> _pedirPermisoAhora() async {
-    _estado = await _permiso.pedir();
-    await _reconciliar();
-    return _estado;
+  /// Pide el permiso del sistema y **anota lo que la persona contestó**.
+  ///
+  /// 🔴 EL CONSENTIMIENTO SE ANOTA ACÁ Y NO SÓLO EN EL MODAL PROPIO, y ésa fue la
+  /// corrección del 2026-09-01. Antes sólo se anotaba desde `reportarModal`, que es lo que
+  /// llama la aplicación anfitriona cuando muestra su pantalla previa. Un comercio que NO
+  /// usa la pregunta blanda —el camino más común— nunca registraba nada: con la compuerta
+  /// encendida, sus avisos habrían quedado bloqueados y nadie habría entendido por qué.
+  ///
+  /// Se descubrió probando en el emulador, no leyendo el código: la llamada salía, el
+  /// permiso se concedía, y la colección de consentimientos quedaba vacía.
+  ///
+  /// Éste es el único punto por donde pasa toda decisión del diálogo del sistema, así que
+  /// anotarlo acá cubre todos los caminos —el directo y el que viene detrás de un modal—
+  /// sin depender de que quien agregue el próximo se acuerde.
+  /// 🔴 EL ÚNICO LUGAR QUE LE PIDE EL PERMISO AL SISTEMA, y por eso el único que anota.
+  ///
+  /// Había DOS caminos al diálogo —éste y el del arranque— y el registro estaba sólo en
+  /// uno. Resultado: según por dónde entrara la persona, su decisión quedaba anotada o no,
+  /// sin ninguna diferencia visible. Con la compuerta encendida eso significa que el mismo
+  /// comercio funciona o no según un detalle que nadie puede ver.
+  ///
+  /// Se descubrió el 2026-09-01 probando el ciclo completo en el emulador: el permiso se
+  /// concedía y la colección de consentimientos quedaba vacía.
+  Future<EstadoDelPermiso> _pedirAlSistemaYAnotar() async {
+    final estado = await _permiso.pedir();
+    final concedido = estado == EstadoDelPermiso.concedido ||
+        estado == EstadoDelPermiso.provisional;
+    await _anotarConsentimiento(
+      categoria: 'avisos',
+      concedido: concedido,
+      // Si el comercio no tiene pantalla previa, lo que la persona tuvo delante fue el
+      // diálogo del sistema. Se dice así: inventar un texto que no vio sería peor.
+      textoMostrado: politica.textos.cuerpo.trim().isNotEmpty
+          ? '${politica.textos.titulo}\n${politica.textos.cuerpo}'
+          : '(el diálogo del sistema operativo, sin pantalla previa del comercio)',
+    );
+    return estado;
+  }
 
+  Future<EstadoDelPermiso> _pedirPermisoAhora() async {
+    _estado = await _pedirAlSistemaYAnotar();
+    await _reconciliar();
+
+    return _estado;
   }
 
   /// Abre la ficha de la aplicación en los Ajustes del teléfono.
@@ -873,6 +1634,9 @@ class AkPush {
     final datos = await DatosDelDispositivo.recolectar();
     try {
       await _api?.registrarDispositivo(
+        // El mismo con el que se dio de alta la instalación: sin esto el servidor
+        // la identifica por el `deviceId` del aparato y crea una segunda.
+        instalacionId: await _almacen.leerOCrearInstalacionId(),
         userId: userId,
         token: _token!,
         plataforma: datos.plataforma,
@@ -915,11 +1679,59 @@ class AkPush {
   /// separada de quien la ejecuta: acá sólo se cumple el plan.
   Future<ResultadoDeSesion> _alIniciarSesion({
     required String userId,
+    TipoDeSujeto tipo = TipoDeSujeto.natural,
+    Documento? documento,
+    Organizacion? organizacion,
     String? identityHash,
     String? identity,
     Map<String, dynamic>? datos,
   }) async {
     _asegurarIniciado();
+
+    // 🔴 `identity` queda en desuso: se traduce ACÁ, una sola vez, para que
+    // todo lo de abajo trabaje siempre con `documento` sin importar por cuál
+    // de las dos entró quien integra.
+    final documentoResuelto = documento ??
+        (identity != null && identity.isNotEmpty
+            ? Documento(clase: ClaseDeDocumento.cedula, numero: identity)
+            : null);
+
+    // ══ EL SUJETO NACE ACÁ, ANTES DE TOCAR NINGÚN PERMISO ═══════════════════
+    //
+    // Es el corazón del rediseño: hasta ahora, sin permiso no había token, y
+    // sin token no había alta — quien decía que no a los avisos no quedaba
+    // anotado en ningún lado. Yendo primero acá, esta persona existe para el
+    // sistema con su aparato enlazado, aunque más abajo el permiso quede en
+    // «denegado».
+    //
+    // 🔴 SIN HUELLA A PROPÓSITO, a diferencia del alta del token de más abajo.
+    // El alta del token se acota con `HuellaDelRegistro` porque repetirla no
+    // cambia nada; ésta se llama en CADA inicio de sesión porque el servidor
+    // tiene que actualizar `visto.ultima` siempre, y porque es la única forma
+    // de que un cambio de documento o de organización llegue al servidor sin
+    // depender de que ADEMÁS haya cambiado el token o el permiso — que es
+    // justo el error que la huella del token ya causó una vez con `datos`
+    // (ver la nota en `HuellaDelRegistro`). No acotar esta llamada es cómo se
+    // evita caer en el mismo agujero por otra puerta.
+    try {
+      final instalacionId = await _almacen.leerOCrearInstalacionId();
+      await _api!.registrarSujeto(
+        sujetoId: userId,
+        tipo: tipo,
+        documento: documentoResuelto,
+        organizacion: organizacion,
+        datos: datos,
+        instalacionId: instalacionId,
+      );
+    } catch (e) {
+      // 🔴 SI ESTO FALLA, EL REGISTRO DEL TOKEN SE INTENTA IGUAL — ver más
+      // abajo. Encadenar el alta del token detrás de la del sujeto sin esta
+      // salvaguarda dejaría a la persona sin avisos por una falla de red que
+      // no tiene nada que ver con el permiso: un servidor caído en el instante
+      // del login no le puede costar los avisos a nadie. Se anota para el
+      // diagnóstico y se sigue.
+      _ultimoError = e is AkPushError ? e : null;
+    }
 
     // 🔴 Se le PREGUNTA al sistema operativo, no se confía en lo guardado. La
     // persona pudo haber apagado las notificaciones desde los Ajustes del
@@ -1019,6 +1831,10 @@ class AkPush {
 
     _userId = userId;
     await _almacen.guardarUsuario(userId);
+    // Desde acá, lo que se anote de comportamiento es de esta persona. Lo anotado ANTES no
+    // se le atribuye hacia atrás: la aplicación se abre antes de que nadie entre, y esos
+    // eventos son de la instalación. El servicio ya sabe a qué sujeto pertenece cada una.
+    _comportamiento.entroElSujeto(userId);
 
     // ── LA UBICACIÓN, DESPUÉS DE TODO LO DEMÁS ────────────────────────────────────
     //
@@ -1034,7 +1850,33 @@ class AkPush {
     //
     // No se espera el resultado: el inicio de sesión de la aplicación no se queda
     // colgado detrás de un modal que la persona puede dejar abierto un minuto.
-    unawaited(_ofrecerUbicacion(forzar: false));
+    // 🔴 LA UBICACIÓN ESPERA A QUE SE CONTESTE LO DE LOS AVISOS. Antes salía en paralelo
+    // —`unawaited` sobre la llamada— y los dos modales aparecían encima del otro: el de
+    // ubicación tapaba al de avisos, que quedaba contestándose a ciegas o sin contestar.
+    // Medido en el emulador el 2026-09-01, con los dos módulos activos y política «login».
+    //
+    // Se encadena y NO se espera el conjunto: el inicio de sesión de la aplicación sigue
+    // sin quedarse colgado detrás de un modal que la persona puede dejar abierto un minuto,
+    // pero los dos diálogos van uno después del otro.
+    unawaited(() async {
+      await _esperarAQueSeCierreElDeAvisos();
+      await _ofrecerUbicacion(forzar: false);
+    }());
+
+    // ── LOS MÓDULOS DE NIVEL 0 ──────────────────────────────────────────────
+    //
+    // 🔴 HASTA HOY EL REGISTRO DE MÓDULOS ERA CÓDIGO MUERTO. Existía, estaba probado, y
+    // nadie lo armaba ni lo corría: `aparato` nunca midió nada en producción, y el módulo
+    // de autenticidad habría sido el tercero en la lista de cosas que existen y no se
+    // ejecutan. Medido el 2026-09-01.
+    //
+    // Se corren acá, después de que el sujeto quedó enlazado, porque necesitan saber a
+    // quién pertenece lo que miden. Y sin esperar: son señales, y ninguna vale que el
+    // inicio de sesión tarde un segundo más.
+    //
+    // El registro los corre en paralelo, con ocho segundos de tope cada uno y un try por
+    // módulo. Uno que falle o que se cuelgue no arrastra a los otros ni al push.
+    unawaited(_correrModulos());
 
     // 🔴 Y A QUIEN YA DIO EL PERMISO, SE LE LEE LA POSICIÓN.
     //
@@ -1048,6 +1890,17 @@ class AkPush {
     // en cada inicio de sesión no gasta batería ni multiplica lecturas: en la mayoría
     // de las llamadas devuelve `false` sin tocar el GPS.
     unawaited(_ubicacion.reportarSiCorresponde(userId));
+
+    // 🔴 Y SI EL COMERCIO PIDIÓ LECTURA CONTINUA, SE PRENDE ACÁ.
+    //
+    // Después de la oferta de la zona y no antes: los dos modos continuos necesitan el
+    // permiso de uso concedido, y el de fondo necesita además la segunda pregunta, que no se
+    // puede hacer sin la primera. Encolarlo antes sería arrancar un flujo que el sistema
+    // corta en la primera lectura.
+    //
+    // Sin esperar, como todo lo de este bloque: el inicio de sesión no se cuelga detrás de
+    // un modal ni de un servicio que levanta.
+    unawaited(_arrancarLecturaContinua(userId));
 
     return ResultadoDeSesion(
       puedeRecibir: concedido && _token != null && _registrado,
@@ -1076,6 +1929,9 @@ class AkPush {
     final cuandoSePregunto = await _almacen.cuandoSePregunto();
 
     await _api!.registrarDispositivo(
+        // El mismo con el que se dio de alta la instalación: sin esto el servidor
+        // la identifica por el `deviceId` del aparato y crea una segunda.
+        instalacionId: await _almacen.leerOCrearInstalacionId(),
       userId: userId,
       token: _token!,
       plataforma: datos.plataforma,
@@ -1122,6 +1978,9 @@ class AkPush {
     final delAparato = await DatosDelDispositivo.recolectar();
 
     await _api!.registrarDispositivo(
+        // El mismo con el que se dio de alta la instalación: sin esto el servidor
+        // la identifica por el `deviceId` del aparato y crea una segunda.
+        instalacionId: await _almacen.leerOCrearInstalacionId(),
       userId: userId,
       token: _token!,
       plataforma: delAparato.plataforma,
@@ -1165,6 +2024,16 @@ class AkPush {
     _userId = null;
     _registrado = false;
     _registradoEl = null;
+
+    // 🔴 SE CORTA LA LECTURA CONTINUA, Y ESTO NO ES UNA LIMPIEZA COSMÉTICA. Un flujo que
+    // sobrevive al cierre de sesión sigue mandando posiciones con el identificador de quien
+    // ya se fue —o del siguiente que entre—, y en segundo plano lo hace con un aviso fijo en
+    // la barra de alguien que cerró la aplicación. Es el peor final posible de este módulo.
+    await _ubicacion.detenerContinuo();
+
+    // Lo que se anote desde ahora es de la instalación y de nadie más. Lo ya encolado
+    // conserva el sujeto que tenía: pertenece a quien lo hizo, no a quien entre después.
+    _comportamiento.salioElSujeto();
     await _almacen.olvidarSesion();
     await Presentador.instancia.retirarTodos();
 
@@ -1216,6 +2085,14 @@ class AkPush {
                   servicioPrendido: await _ubicacion.servicioPrendido,
                   ultimoEnvio: _ubicacion.ultimoEnvio,
                   ultimoMotivo: _ubicacion.ultimoMotivo,
+                  // 🔴 Los dos modos y lo que falta declarar. Sin esto, un comercio con el
+                  // segundo plano apagado por un renglón que le falta al manifiesto se ve en
+                  // el diagnóstico exactamente igual que uno que nunca lo pidió.
+                  modoPedido: _ubicacion.modoPedido.name,
+                  modoActivo: _ubicacion.modoActivo.name,
+                  faltaDeclarar: _ubicacion.faltaDeclarar,
+                  lecturasDeLaSesion: _ubicacion.lecturasDeLaSesion,
+                  enviosDeLaSesion: _ubicacion.enviosDeLaSesion,
                 )
               : null);
 
@@ -1307,6 +2184,9 @@ class AkPush {
     final datos = await DatosDelDispositivo.recolectar();
     try {
       await _api?.registrarDispositivo(
+        // El mismo con el que se dio de alta la instalación: sin esto el servidor
+        // la identifica por el `deviceId` del aparato y crea una segunda.
+        instalacionId: await _almacen.leerOCrearInstalacionId(),
         userId: userId,
         token: nuevo,
         plataforma: datos.plataforma,
@@ -1362,4 +2242,20 @@ class AkPush {
 
 extension _Primero<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
+}
+
+
+/// Escucha cuándo la aplicación vuelve al frente. Nada más.
+///
+/// 🔴 Es una clase aparte y no un `WidgetsBindingObserver` sobre `AkPush` a propósito: `AkPush`
+/// es un singleton privado con estado, y hacerlo observador lo ataría al ciclo de vida de
+/// Flutter — que es justo lo que impide probarlo sin montar una aplicación.
+class _CicloDeVida extends WidgetsBindingObserver {
+  bool montado = false;
+  void Function()? alVolver;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState estado) {
+    if (estado == AppLifecycleState.resumed) alVolver?.call();
+  }
 }

@@ -1,4 +1,4 @@
-import 'package:ak_push/src/permiso.dart';
+import 'package:hz_collection_sdk/src/permiso.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_test/flutter_test.dart';
 

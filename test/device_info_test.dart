@@ -1,4 +1,4 @@
-import 'package:ak_push/src/device_info.dart';
+import 'package:hz_collection_sdk/src/device_info.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

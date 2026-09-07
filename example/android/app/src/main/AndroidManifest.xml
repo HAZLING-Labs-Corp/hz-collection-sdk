@@ -12,7 +12,8 @@
     <!-- Android 13+ pide el permiso en tiempo de ejecución. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="ak_push_demo"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:label="${nombreDeLaApp}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <!-- La actividad de Flutter, en vez de una propia: así el identificador
@@ -46,7 +47,8 @@
             android:name="flutterEmbedding"
             android:value="2" />
         <!-- Canal por defecto de los avisos que dibuja el sistema cuando la app
-             está cerrada. El id tiene que coincidir con el canal que crea ak_push. -->
+             está cerrada. El id tiene que coincidir con el canal que crea
+             hz_collection_sdk. -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="default" />

@@ -1,10 +1,67 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'consentimiento.dart';
 import 'politica.dart';
+
+/// Un módulo del catálogo, tal como lo describe el servidor.
+///
+/// El catálogo —`avisos`, `ubicacion`, `senales`, `rastreo`— vive en CÓDIGO del
+/// lado del servicio, no en una base de datos: el comercio no lo edita, sólo
+/// activa o desactiva lo que ya existe. Acá sólo se **lee** lo que el servidor
+/// describe de cada uno.
+///
+/// 🔴 `estado` distingue lo que está construido de lo que sólo tiene lugar en
+/// el modelo. Un módulo con `estado: 'declarado'` **no está implementado**: no
+/// inventar su comportamiento a partir de este objeto es justamente lo que
+/// evita construir sobre un módulo que todavía no existe del otro lado.
+class InfoDeModulo {
+  const InfoDeModulo({
+    required this.nivel,
+    required this.cadencia,
+    required this.permisos,
+    required this.estado,
+  });
+
+  /// 0 sin permiso · 1 permiso simple · 2 permiso caro (asusta en la ficha de
+  /// Play) · 3 revisión manual de Google.
+  final int nivel;
+
+  /// `episodica` una vez · `periodica` al abrir con freno · `evento` cuando
+  /// pasa algo · `continua` en segundo plano.
+  final String cadencia;
+
+  /// Los permisos NATIVOS que este módulo necesita, informativo nada más: el
+  /// paquete no los pide ni los declara por su cuenta. Cualquier permiso nuevo
+  /// va en el manifest de la aplicación anfitriona — este paquete no puede
+  /// fusionar uno propio.
+  final List<String> permisos;
+
+  /// `activo` está construido · `declarado` tiene lugar en el modelo pero
+  /// todavía no. Un valor que no se reconoce no se inventa: queda tal cual
+  /// llegó, y [construido] lo trata como no construido.
+  final String estado;
+
+  bool get construido => estado == 'activo';
+
+  factory InfoDeModulo.fromJson(Map<String, dynamic> j) => InfoDeModulo(
+        nivel: (j['nivel'] as num?)?.toInt() ?? 0,
+        cadencia: j['cadencia'] as String? ?? '',
+        permisos: (j['permisos'] as List?)?.map((e) => '$e').toList() ??
+            const <String>[],
+        estado: j['estado'] as String? ?? 'declarado',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'nivel': nivel,
+        'cadencia': cadencia,
+        'permisos': permisos,
+        'estado': estado,
+      };
+}
 
 /// La configuración de Firebase que este comercio tiene asignada hoy.
 ///
@@ -24,6 +81,7 @@ class AkPushConfig {
     this.politica = PoliticaDeNotificaciones.comoEstabaAntes,
     this.ubicacion = const PoliticaDeUbicacion(),
     this.trajoPolitica = false,
+    this.modulos = const {},
   });
 
   final String projectId;
@@ -66,6 +124,14 @@ class AkPushConfig {
   /// no existe. Sirve para no pisar la que declaró la aplicación.
   final bool trajoPolitica;
 
+  /// El catálogo de módulos que el servidor tiene para este comercio —
+  /// `avisos`, `ubicacion`, y los que se declaren pero todavía no estén
+  /// construidos—, con la clave siendo el nombre del módulo.
+  ///
+  /// Tolera que el servicio todavía no lo mande: queda vacío, y nadie ve un
+  /// cambio hasta que el campo exista del otro lado.
+  final Map<String, InfoDeModulo> modulos;
+
   factory AkPushConfig.fromJson(Map<String, dynamic> json) {
     final fb = (json['firebase'] as Map).cast<String, dynamic>();
     return AkPushConfig(
@@ -88,6 +154,14 @@ class AkPushConfig {
             ? (json['politica'] as Map).cast<String, dynamic>()
             : null,
       ),
+      modulos: json['modulos'] is Map
+          ? (json['modulos'] as Map).map((clave, valor) => MapEntry(
+                '$clave',
+                InfoDeModulo.fromJson(
+                  valor is Map ? (valor).cast<String, dynamic>() : const {},
+                ),
+              ))
+          : const {},
     );
   }
 
@@ -104,6 +178,8 @@ class AkPushConfig {
         'version': version,
         if (comercio != null) 'comercio': comercio,
         'politica': politica.toJson(),
+        if (modulos.isNotEmpty)
+          'modulos': modulos.map((k, v) => MapEntry(k, v.toJson())),
       };
 }
 
@@ -121,6 +197,10 @@ class ConfigStore {
   static const _claveConsentimiento = 'akpush.consentimiento';
   static const _claveCredencial = 'akpush.credencial';
 
+  /// El identificador de ESTE APARATO en el modelo nuevo. Lo genera el SDK y
+  /// vive acá, no en el sistema operativo.
+  static const _claveInstalacionId = 'akpush.instalacionId';
+
   /// Cuándo se le OFRECIÓ la ubicación por última vez.
   ///
   /// 🔴 Es distinto de cuándo se le pidió el permiso del sistema, y por eso tiene su
@@ -134,6 +214,14 @@ class ConfigStore {
   /// Clave propia, separada de la oferta: son dos avisos con dos causas distintas, y
   /// compartir la fecha haría que uno tapara al otro durante semanas.
   static const _claveAvisoServicio = 'akpush.avisoServicioUbicacion';
+
+  /// La SEGUNDA oferta —la de «siempre»— lleva su propia fecha, y no comparte la de arriba.
+  ///
+  /// 🔴 Compartirla haría que una tape a la otra: quien acaba de aceptar la zona tiene la
+  /// fecha de hoy anotada, así que la oferta de «siempre» no saldría hasta dentro de dos
+  /// semanas — justo cuando la persona ya se olvidó de qué es esta aplicación. Son dos
+  /// preguntas distintas con dos relojes distintos.
+  static const _claveOfertaSiempre = 'akpush.ofertaUbicacionSiempre';
 
   Future<AkPushConfig?> leer() async {
     final prefs = await SharedPreferences.getInstance();
@@ -210,6 +298,18 @@ class ConfigStore {
     return cuando == null ? null : DateTime.now().difference(cuando);
   }
 
+  Future<void> guardarOfertaDeSiempre(DateTime cuando) async =>
+      (await SharedPreferences.getInstance())
+          .setString(_claveOfertaSiempre, cuando.toIso8601String());
+
+  /// Cuánto pasó desde que se le ofreció el «siempre». `null` = nunca.
+  Future<Duration?> desdeLaUltimaOfertaDeSiempre() async {
+    final crudo =
+        (await SharedPreferences.getInstance()).getString(_claveOfertaSiempre);
+    final cuando = crudo == null ? null : DateTime.tryParse(crudo);
+    return cuando == null ? null : DateTime.now().difference(cuando);
+  }
+
   Future<void> guardarAvisoDeServicio(DateTime cuando) async =>
       (await SharedPreferences.getInstance())
           .setString(_claveAvisoServicio, cuando.toIso8601String());
@@ -274,6 +374,66 @@ class ConfigStore {
     } catch (_) {
       return null;
     }
+  }
+
+  /// El identificador de esta instalación, para el modelo nuevo — ver el
+  /// contrato del rediseño: «Comercio → Sujeto → Instalación → módulos».
+  ///
+  /// Lo genera el SDK LA PRIMERA VEZ y lo persiste acá: tiene que sobrevivir
+  /// cierres de la aplicación, así que no alcanza con guardarlo en memoria.
+  ///
+  /// 🔴 NO se usa el `deviceId` que entrega la plataforma. En Android puede
+  /// cambiar —una restauración de fábrica, un cambio de cuenta de Google en
+  /// versiones viejas— y un identificador que cambia solo deja de servir para
+  /// reconocer «el mismo aparato» entre un arranque y el siguiente: el
+  /// servidor vería una instalación nueva donde había una, y perdería el
+  /// enlace con el sujeto que ya la tenía enlazada.
+  Future<String> leerOCrearInstalacionId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final existente = prefs.getString(_claveInstalacionId);
+    if (existente != null && existente.isNotEmpty) return existente;
+
+    final nuevo = _generarInstalacionId();
+    await prefs.setString(_claveInstalacionId, nuevo);
+    return nuevo;
+  }
+
+  /// Un identificador al azar, con la forma de un UUID v4.
+  ///
+  /// No se agrega el paquete `uuid` sólo para esto: `Random.secure()` alcanza
+  /// para lo único que hace falta —que dos aparatos no elijan el mismo—, y
+  /// sumar una dependencia nueva no estaba en el encargo.
+  static String _generarInstalacionId() {
+    final azar = math.Random.secure();
+    final bytes = List<int>.generate(16, (_) => azar.nextInt(256));
+    // Versión 4 y variante RFC 4122, como cualquier UUID v4: no hace falta
+    // que sea uno de verdad, alcanza con que tenga su forma y no choque.
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    String hex(int desde, int hasta) => bytes
+        .sublist(desde, hasta)
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-${hex(8, 10)}-${hex(10, 16)}';
+  }
+
+  /// ══ OLVIDAR LA CONFIGURACIÓN DEL COMERCIO ═════════════════════════════════
+  ///
+  /// Para cambiar de comercio (`AkPush.cambiarDeComercio`). NO se usa al cerrar sesión:
+  /// la ficha es del comercio, no de la persona, y borrarla en cada logout dejaría a la
+  /// aplicación pidiéndola de nuevo en cada entrada — y sin ficha no hay avisos hasta que
+  /// la red conteste.
+  ///
+  /// 🔴 Se borra la ficha Y la credencial, juntas. Son un par: una credencial de un
+  /// comercio con la ficha de otro es el estado que hace que el SDK crea que está en un
+  /// comercio y reporte al otro. El isolate de segundo plano lee la credencial de acá.
+  Future<void> olvidarConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_claveConfig);
+    await prefs.remove(_claveCredencial);
+    // El consentimiento también: lo que la persona aceptó lo aceptó CON UN COMERCIO. Que
+    // valga para el siguiente sería darle por contestado algo que nunca le preguntaron.
+    await prefs.remove(_claveConsentimiento);
   }
 
   Future<void> olvidarSesion() async {

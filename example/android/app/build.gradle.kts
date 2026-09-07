@@ -18,6 +18,13 @@ plugins {
 val paqueteDeLaApp = (project.findProperty("paquete") as String?)
     ?: "com.juanpush.android1"
 
+// El nombre que se lee bajo el ícono, por el mismo motivo que el paquete:
+//   flutter run -Pnombre=Rodar
+// Va como placeholder del manifiesto porque `android:label` se resuelve al empaquetar y no
+// puede leer un `--dart-define`, que sólo existe dentro de Dart.
+val nombreDeLaApp = (project.findProperty("nombre") as String?)
+    ?: "Collection"
+
 // 🔴 LA FIRMA DE RELEASE.
 //
 // Un APK de release firmado con la llave de DEPURACIÓN se instala en un emulador y se
@@ -57,6 +64,7 @@ android {
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = paqueteDeLaApp
+        manifestPlaceholders["nombreDeLaApp"] = nombreDeLaApp
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

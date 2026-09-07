@@ -1,4 +1,4 @@
-import 'package:ak_push/src/remote_config.dart' show ConfigStore;
+import 'package:hz_collection_sdk/src/remote_config.dart' show ConfigStore;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

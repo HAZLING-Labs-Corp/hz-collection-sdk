@@ -1,5 +1,5 @@
-import 'package:ak_push/src/decision_de_dibujo.dart';
-import 'package:ak_push/src/push_message.dart';
+import 'package:hz_collection_sdk/src/decision_de_dibujo.dart';
+import 'package:hz_collection_sdk/src/push_message.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _aviso = PushMessage(data: {'pushLogId': '6a94'}, title: 'Hola');
