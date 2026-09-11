@@ -22,6 +22,7 @@ import 'dart:io';
 import 'package:hz_collection_sdk/src/permisologia/campos.dart';
 import 'package:hz_collection_sdk/src/permisologia/catalogo_de_permisos.dart';
 import 'package:hz_collection_sdk/src/permisologia/transformar.dart';
+import 'package:hz_collection_sdk/src/version.dart';
 
 String _nivel(Nivel n) => switch (n) {
       Nivel.ninguno => 'ninguno',
@@ -52,6 +53,12 @@ String _finalidad(String? paraQue) {
 void main() {
   final salida = {
     'generado': DateTime.now().toUtc().toIso8601String(),
+    // 🔴 LA VERSIÓN DEL SDK VIAJA EN EL CATÁLOGO, y por eso el back puede decir cuál es la
+    // última publicada sin tener un número escrito a mano que se desactualiza solo. Sale de
+    // la misma constante que el SDK le manda a cada teléfono, así que «la última publicada» y
+    // «la que corre este aparato» son comparables de verdad — si salieran de dos lugares, un
+    // día dirían cosas distintas y nadie sabría cuál mirar.
+    'versionDelSdk': versionDelSdk,
     'aviso': 'Generado por «dart run hz_collection_sdk:catalogo». No editar a mano: '
         'la fuente es lib/src/permisologia/catalogo_de_permisos.dart.',
     'puertaDeDatoSensible': sistemaAdmiteDatoSensible ? 'abierta' : 'cerrada',

@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'version.dart';
 
 /// Quién es este teléfono, y cómo se llama esta aplicación.
 ///
@@ -175,6 +176,12 @@ class DatosDelDispositivo {
         if (identificadorDePaquete.isNotEmpty)
           'packageName': identificadorDePaquete,
         'platform': plataforma,
+        // 🔴 LA VERSIÓN DE ESTE SDK, que no es `appVersion`. Ésa es la versión de la
+        // aplicación del comercio; ésta es la nuestra, y son dos cosas distintas con
+        // nombres parecidos. Sin ella, «¿este teléfono ya tiene el SDK con el arreglo?»
+        // sólo se puede adivinar por la fecha. Va SIEMPRE: es una constante compilada,
+        // así que nunca puede faltar. Ver `version.dart`.
+        'sdkVersion': versionDelSdk,
         if (deviceId != null) 'deviceId': deviceId,
         if (modelo != null) 'model': modelo,
         if (fabricante != null) 'manufacturer': fabricante,
