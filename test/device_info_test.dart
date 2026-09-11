@@ -102,4 +102,31 @@ void main() {
       expect(idioma?.startsWith('und'), isNot(true));
     });
   });
+
+  /// 🔴 DE QUÉ APLICACIÓN VIENE EL APARATO — la prueba que faltaba.
+  ///
+  /// Los dos campos existían en la clase y NO viajaban en el alta. Medido el
+  /// 2026-09-11 sobre cuatro comercios: de quince instalaciones guardadas,
+  /// ninguna sabía de qué aplicación venía. Sin eso, dos motores atados a dos
+  /// aplicaciones distintas miran la misma gente y devuelven el mismo número.
+  test('el alta dice de qué aplicación y de qué plataforma viene', () {
+    final d = DatosDelDispositivo(
+      identificadorDePaquete: 'com.hazling.rodar',
+      plataforma: 'ANDROID',
+      desfaseUtcMinutos: -240,
+    );
+    final j = d.toJson();
+    expect(j['packageName'], 'com.hazling.rodar');
+    expect(j['platform'], 'ANDROID');
+  });
+
+  /// Sin canal nativo el paquete viene vacío, y una cadena vacía guardada del
+  /// otro lado se leería como una aplicación llamada «». Ausente es la verdad.
+  test('sin paquete no se manda una app vacía', () {
+    final d = DatosDelDispositivo(
+        identificadorDePaquete: '', plataforma: 'IOS', desfaseUtcMinutos: -240);
+    final j = d.toJson();
+    expect(j.containsKey('packageName'), isFalse);
+    expect(j['platform'], 'IOS');
+  });
 }

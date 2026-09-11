@@ -146,6 +146,35 @@ class DatosDelDispositivo {
   /// Omite los nulos: un campo ausente y un campo con el texto "null" son cosas
   /// distintas para quien los lee del otro lado.
   Map<String, dynamic> toJson() => {
+        // ── 🔴 DE QUÉ APLICACIÓN VIENE ESTE APARATO ──────────────────────────
+        //
+        // Los dos campos existían acá adentro desde siempre y NO viajaban. El
+        // paquete se leía con `PackageInfo.fromPlatform()` y de ese par sólo se
+        // mandaba la versión; el nombre viajaba en un único lugar —la consulta
+        // de configuración, `?paquete=…`— para que el servidor verificara que
+        // la configuración era de esta aplicación, y ahí moría.
+        //
+        // La consecuencia, medida el 2026-09-11 sobre cuatro comercios: de las
+        // quince instalaciones guardadas, CERO sabían de qué aplicación venían.
+        // Y un comercio puede tener varias: mundototal declara cinco.
+        //
+        // Sin esto, «¿de qué app vino esta persona?» no tiene respuesta, y dos
+        // motores atados a dos aplicaciones distintas miran exactamente la
+        // misma gente y devuelven el mismo número — mostrando dos resultados
+        // que aparentan ser de cosas distintas. Eso es peor que no tener la
+        // funcionalidad: es tenerla mintiendo.
+        //
+        // 🔴 EL PAQUETE VIAJA SÓLO SI SE SUPO. Sin canal nativo, `_leerPaquete`
+        // devuelve cadena vacía a propósito —«no inventar un identificador que
+        // no es el de esta aplicación»— y mandar esa cadena sería peor que no
+        // mandar nada: del otro lado quedaría guardada como si fuera una app
+        // llamada «», y ese aparato se atribuiría a ella. Ausente significa «no
+        // se supo», que es la verdad.
+        //
+        // La plataforma sí va siempre: siempre se sabe.
+        if (identificadorDePaquete.isNotEmpty)
+          'packageName': identificadorDePaquete,
+        'platform': plataforma,
         if (deviceId != null) 'deviceId': deviceId,
         if (modelo != null) 'model': modelo,
         if (fabricante != null) 'manufacturer': fabricante,
