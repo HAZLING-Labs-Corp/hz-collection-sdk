@@ -51,7 +51,37 @@ class GrupoDeSenales {
   final String prefijo;
   final String titulo;
   final String queRevela;
-  const GrupoDeSenales(this.prefijo, this.titulo, this.queRevela);
+
+  /// En qué plataformas EXISTE este grupo.
+  ///
+  /// 🔴 AGREGADO EL 2026-09-11, Y NO ES UN DATO DE ADORNO: sin él, la consola de un comercio
+  /// ofrece configurar en iOS grupos que iOS no da, y el comercio los prende creyendo que va a
+  /// medir algo. No falla — simplemente no llega nada, que es la peor forma de fallar.
+  ///
+  /// Medido contando las claves que reporta cada plugin nativo, no declarado a ojo:
+  ///
+  /// | grupo    | Android | iOS |
+  /// |----------|---------|-----|
+  /// | `hd_`    | 35      | 20  |
+  /// | `cfg_`   | 1       | 0   |
+  /// | `acc_`   | 7       | 0   |
+  /// | `bat_`   | 7       | 3   |
+  /// | `sen_`   | 9       | 7   |
+  /// | `red_`   | 7       | 4   |
+  /// | `ent_`   | 8       | 0   |
+  /// | `canal_` | 9       | 0   |
+  /// | `app_`   | 8       | 0   |
+  /// | `usr_`   | 3       | 0   |
+  ///
+  /// **Cinco de los diez no existen en iOS**, y entre ellos está `acc_` —accesibilidad—, que es
+  /// la que detecta el control remoto y la que más pesa en el portón de fraude.
+  ///
+  /// ⚠️ Se declara acá y se comprueba con `bin/verificar-plataformas.dart`: una marca a mano se
+  /// desincroniza el día que alguien agregue una señal al plugin de iOS y se olvide de esto.
+  final List<String> plataformas;
+
+  const GrupoDeSenales(this.prefijo, this.titulo, this.queRevela,
+      {this.plataformas = const ['ANDROID', 'IOS']});
 }
 
 const List<GrupoDeSenales> gruposDeSenales = [
@@ -62,11 +92,13 @@ const List<GrupoDeSenales> gruposDeSenales = [
   GrupoDeSenales('cfg_', 'Configuración del sistema',
       'Cómo está configurado el teléfono: si tiene la depuración por USB activa, si permite '
       'instalar aplicaciones de fuera de la tienda, si las animaciones están apagadas. Nada '
-      'de esto dice quién es la persona; dice cómo está armado el aparato.'),
+      'de esto dice quién es la persona; dice cómo está armado el aparato.',
+      plataformas: ['ANDROID']),
   GrupoDeSenales('acc_', 'Accesibilidad',
       'Si hay servicios de accesibilidad activos y qué pueden hacer: leer la pantalla, tocar '
       'por la persona. Es lo que detecta una herramienta de control remoto. No se manda cuáles '
-      'son, sólo cuántos y qué pueden.'),
+      'son, sólo cuántos y qué pueden.',
+      plataformas: ['ANDROID']),
   GrupoDeSenales('bat_', 'Batería a fondo',
       'Voltaje, temperatura, salud y tecnología de la batería. Un emulador devuelve valores '
       'redondos que un teléfono de verdad nunca da.'),
@@ -79,20 +111,24 @@ const List<GrupoDeSenales> gruposDeSenales = [
   GrupoDeSenales('ent_', 'Entregabilidad',
       'Si el push va a llegar de verdad y lo va a ver: avisos permitidos, canal silenciado, '
       'ahorro de batería, Doze, restricción en segundo plano, No molestar, pantalla encendida '
-      'y nivel de señal. Todo sin pedir un permiso. El proveedor arma con esto su índice.'),
+      'y nivel de señal. Todo sin pedir un permiso. El proveedor arma con esto su índice.',
+      plataformas: ['ANDROID']),
   GrupoDeSenales('canal_', 'Canales alcanzables',
       'Qué apps de contacto tiene instaladas —WhatsApp, Telegram, redes—, para elegir por dónde '
       'mandarle. Sólo dice si están instaladas, NO si están activas ni qué hace en ellas. Es la '
-      'lista puntual que Google Play permite, sin ver todas las apps del teléfono.'),
+      'lista puntual que Google Play permite, sin ver todas las apps del teléfono.',
+      plataformas: ['ANDROID']),
   GrupoDeSenales('app_', 'Vida económica',
       'Qué apps de dinero, compras, mapas y suscripciones tiene instaladas. Igual que los '
       'canales, es la lista PUNTUAL que Google Play permite y sólo dice si están instaladas: '
       'nunca qué hace en ellas ni cuánto las abre, que exigiría un permiso vetado. '
       '🔴 Y la trampa: tener pocas apps no es riesgo de crédito, es pobreza. Sirven si '
-      'conservan poder predictivo controlando por nivel de ingreso; si no, se sacan.'),
+      'conservan poder predictivo controlando por nivel de ingreso; si no, se sacan.',
+      plataformas: ['ANDROID']),
   GrupoDeSenales('usr_', 'Perfil de usuario',
       'Si la aplicación corre en el usuario principal del teléfono o en un perfil secundario, '
-      'y si el aparato está en modo demostración.'),
+      'y si el aparato está en modo demostración.',
+      plataformas: ['ANDROID']),
 ];
 
 /// A qué grupo pertenece un campo. `null` si nadie lo declaró.

@@ -92,7 +92,7 @@ void main() {
     // dejado noventa y cinco rótulos que se separan del código en la primera semana.
     'gruposDeSenales': [
       for (final g in gruposDeSenales)
-        {'prefijo': g.prefijo, 'titulo': g.titulo, 'queRevela': g.queRevela},
+        {'prefijo': g.prefijo, 'titulo': g.titulo, 'queRevela': g.queRevela, 'plataformas': g.plataformas},
     ],
     'campos': {
       for (final entrada in {
