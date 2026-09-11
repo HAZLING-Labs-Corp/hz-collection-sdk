@@ -20,7 +20,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:hz_collection_sdk/src/permisologia/campos.dart';
-import 'package:hz_collection_sdk/src/permisologia/propositos.dart';
 import 'package:hz_collection_sdk/src/permisologia/catalogo_de_permisos.dart';
 import 'package:hz_collection_sdk/src/permisologia/transformar.dart';
 
@@ -91,13 +90,6 @@ void main() {
     // que poder mostrarle a una persona QUÉ SE SABE DE ELLA, en castellano, y la única frase
     // que dice eso bien es la que escribió quien declaró el campo. Copiarlas al front habría
     // dejado noventa y cinco rótulos que se separan del código en la primera semana.
-    // 🔴 LOS PROPÓSITOS, para agrupar al configurar. Ver `propositos.dart`: la categoría cruda
-    // sigue mandando en los pesos de los motores y no se toca; esto es la capa de arriba, que
-    // convierte 26 categorías —seis de ellas restos de una frase— en siete cosas que un comercio
-    // puede leer y decidir.
-    'propositos': propositos
-        .map((p) => {'clave': p.clave, 'titulo': p.titulo, 'paraQueLeSirve': p.paraQueLeSirve})
-        .toList(),
     'gruposDeSenales': [
       for (final g in gruposDeSenales)
         {'prefijo': g.prefijo, 'titulo': g.titulo, 'queRevela': g.queRevela, 'plataformas': g.plataformas},
@@ -118,10 +110,6 @@ void main() {
               'como': c.como.name,
               if (c.como == Transformacion.tramo) 'tramoDe': c.tramoDe,
               if (grupoDe(c.nombre) != null) 'grupo': grupoDe(c.nombre)!.prefijo,
-              // 🔴 El propósito viaja POR CAMPO además de la tabla: sin él, quien consuma el
-              // catálogo tendría que recalcular la categoría cruda —partir el texto por los dos
-              // puntos— y esa regla duplicada diverge a la primera ficha rara.
-              if (propositoDe(c.paraQue) != null) 'proposito': propositoDe(c.paraQue),
             },
         ],
     },
