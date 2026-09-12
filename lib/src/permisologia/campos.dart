@@ -162,6 +162,29 @@ const List<GrupoDeSenales> gruposDeSenales = [
       '🔴 El límite: NO dice que deba ahí, ni cuánto, ni si paga bien. Dice que esa persona '
       'ya pidió —o quiso pedir— crédito en otro lado.',
       plataformas: ['ANDROID']),
+  /**
+   * 🔴 SE DECLARAN LOS DOS GRUPOS NUEVOS, Y ES UN ARREGLO DEL MISMO DÍA.
+   *
+   * El 2026-09-12 se agregaron los prefijos `banco_int_` y `apuesta_` **sin declarar su grupo**,
+   * y el efecto se vio enseguida en pantalla: las dos de apuestas salían bajo «Sin sección
+   * declarada» en la ficha de la persona, y las cinco de banca internacional se mezclaban con
+   * la banca del país.
+   *
+   * 📍 El orden NO importa: `grupoDe()` se arregló el mismo día para quedarse con el prefijo más
+   * largo. Antes ganaba el primero de la lista, y `banco_int_wise` caía en «Banca» sin llegar acá.
+   */
+  GrupoDeSenales('banco_int_', 'Banca internacional',
+      'Qué aplicaciones de banca de FUERA del país tiene instaladas. No es lo mismo que la banca '
+      'nacional: aquélla dice que opera con una institución de acá, ésta que mueve divisa. '
+      '🔴 El límite: tener la aplicación no es tener la cuenta activa ni saldo.',
+      plataformas: ['ANDROID']),
+  GrupoDeSenales('apuesta_', 'Apuestas y juegos de azar',
+      'Qué aplicaciones de apuestas tiene instaladas. '
+      '🔴 LA COBERTURA ES PARCIAL Y HAY QUE LEERLA ASÍ: Google Play no admite aplicaciones de '
+      'apuestas en Venezuela, así que las casas grandes se instalan por fuera de la tienda y no '
+      'se pueden declarar sin inventar el nombre del paquete. Un cero acá NO significa «no '
+      'apuesta»: significa que no tiene ninguna de las que sí están en la tienda.',
+      plataformas: ['ANDROID']),
   GrupoDeSenales('usr_', 'Perfil de usuario',
       'Si la aplicación corre en el usuario principal del teléfono o en un perfil secundario, '
       'y si el aparato está en modo demostración.',
@@ -170,10 +193,24 @@ const List<GrupoDeSenales> gruposDeSenales = [
 
 /// A qué grupo pertenece un campo. `null` si nadie lo declaró.
 GrupoDeSenales? grupoDe(String campo) {
+  /*
+   * 🔴 GANA EL PREFIJO MÁS LARGO, NO EL PRIMERO DE LA LISTA.
+   *
+   * Antes devolvía el primero que calzara, y eso convertía el ORDEN DE DECLARACIÓN en una regla
+   * de negocio invisible: `banco_int_wise` empieza con `banco_`, así que caía en «Banca» y nunca
+   * llegaba a «Banca internacional», que estaba treinta líneas más abajo. Se descubrió el mismo
+   * día que se agregó el grupo, y sólo porque se miró la pantalla.
+   *
+   * Se pudo arreglar moviendo la declaración hacia arriba, y estaría mal: dejaría una trampa
+   * armada para el próximo prefijo anidado —`app_conductor_`, por ejemplo— que nadie recordaría.
+   * Con el más largo, el orden deja de importar para siempre.
+   */
+  GrupoDeSenales? mejor;
   for (final g in gruposDeSenales) {
-    if (campo.startsWith(g.prefijo)) return g;
+    if (!campo.startsWith(g.prefijo)) continue;
+    if (mejor == null || g.prefijo.length > mejor.prefijo.length) mejor = g;
   }
-  return null;
+  return mejor;
 }
 
 /// Las fichas. Cada una dice QUÉ MANDA, en castellano: es el texto que se le puede mostrar a
