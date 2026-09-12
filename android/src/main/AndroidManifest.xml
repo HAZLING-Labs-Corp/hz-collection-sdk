@@ -161,6 +161,46 @@
 
         <!--
           ═══════════════════════════════════════════════════════════════════════════
+          BANCA INTERNACIONAL Y APUESTAS — agregadas el 2026-09-12
+          ═══════════════════════════════════════════════════════════════════════════
+
+          🔴 JUAN: *«bancos externos también, es importante ver si tienes bancos externos, como
+          una categoría, internacionales»* · *«me está haciendo falta una categoría, los juegos de
+          azar… hay aplicaciones de apuestas en línea, que son peligrosas»*.
+
+          Son las dos caras de la misma moneda y por eso van juntas: una suma y la otra RESTA.
+
+          · **Banca internacional** dice acceso a divisa y a banca formal fuera del país. En
+            Venezuela eso no es un lujo: es la diferencia entre cobrar en bolívares y poder
+            sostener una cuota indexada.
+          · **Apuestas** es la primera categoría de este libro con peso NEGATIVO. Ver
+            `las-categorias-de-aplicaciones.ts` para por qué el techo no baja con ella.
+
+          ⚠️ Y UNA HONESTIDAD SOBRE LA COBERTURA DE APUESTAS, que hay que decir antes de que
+          alguien lea un cero y crea que la persona no juega: **Google Play NO admite
+          aplicaciones de apuestas en Venezuela.** Las casas grandes —1xBet, 22bet, bet365— se
+          instalan por fuera de la tienda, así que no tienen ficha que verificar y no se declaran
+          acá: declarar un paquete inventado devolvería `false` para toda la cartera y para
+          siempre. Sólo van las dos que SÍ están en la tienda y se pudieron verificar.
+
+          📍 Para el resto, la señal que sirve ya existe y es otra: `cfg_install_non_market_apps`
+          —el teléfono permite instalar de fuera de la tienda—. No dice que apueste; dice que
+          puede tener instalado lo que la tienda no da.
+        -->
+
+        <!-- Banca internacional: acceso a divisa y a banca formal fuera del país. -->
+        <package android:name="com.transferwise.android" />
+        <package android:name="com.revolut.revolut" />
+        <package android:name="com.revolut.business" />
+        <package android:name="com.payoneer.android" />
+        <package android:name="com.chase.sig.android" />
+
+        <!-- Apuestas y juegos de azar. Cobertura parcial a propósito: ver el aviso de arriba. -->
+        <package android:name="com.rexary.tuanimalito" />
+        <package android:name="com.kaizengaming.betano.sportsbook" />
+
+        <!--
+          ═══════════════════════════════════════════════════════════════════════════
           APPS QUE HABLAN DE LA VIDA ECONÓMICA — agregadas el 2026-09-05
           ═══════════════════════════════════════════════════════════════════════════
 

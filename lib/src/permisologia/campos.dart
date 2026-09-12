@@ -737,6 +737,69 @@ const List<CampoRecolectado> camposDeSenales = [
       queManda: 'si tiene Waze instalado',
       paraQue: 'Movilidad: navega manejando. Waze no es un mapa cualquiera: es el de quien va al volante.',
       computada: true),
+
+  // ── BANCA INTERNACIONAL ─────────────────────────────────────────────────────
+  //
+  // 🔴 PEDIDO DE JUAN, 2026-09-12: *«bancos externos también, es importante ver si tienes bancos
+  // externos, como una categoría, internacionales»*.
+  //
+  // Categoría propia y no dentro de «Banca» a propósito: no dicen lo mismo. Tener el Banco de
+  // Venezuela dice que opera con una institución del país; tener Wise o Chase dice que **cobra o
+  // guarda en divisa y tiene acceso a banca formal fuera**. En una economía indexada eso es la
+  // diferencia entre poder sostener una cuota en dólares y no poder.
+  //
+  // ⚠️ El límite de siempre, y acá pesa más: tener la aplicación NO es tener la cuenta. Wise se
+  // instala para recibir un pago una vez.
+  CampoRecolectado('banco_int_wise', Transformacion.taICual,
+      queManda: 'si tiene Wise instalado',
+      paraQue: 'Banca internacional: recibe o manda dinero fuera del país por la vía formal.',
+      computada: true),
+  CampoRecolectado('banco_int_revolut', Transformacion.taICual,
+      queManda: 'si tiene Revolut instalado',
+      paraQue: 'Banca internacional: cuenta en divisa con una entidad de fuera.',
+      computada: true),
+  CampoRecolectado('banco_int_revolut_negocios', Transformacion.taICual,
+      queManda: 'si tiene Revolut Business instalado',
+      paraQue: 'Banca internacional: la versión de negocio. Sugiere actividad propia, no sólo consumo.',
+      computada: true),
+  CampoRecolectado('banco_int_payoneer', Transformacion.taICual,
+      queManda: 'si tiene Payoneer instalado',
+      paraQue: 'Banca internacional: cobra trabajo desde el exterior. Es la vía del que factura afuera.',
+      computada: true),
+  CampoRecolectado('banco_int_chase', Transformacion.taICual,
+      queManda: 'si tiene Chase instalado',
+      paraQue: 'Banca internacional: cuenta en un banco de Estados Unidos.',
+      computada: true),
+
+  // ── APUESTAS Y JUEGOS DE AZAR ───────────────────────────────────────────────
+  //
+  // 🔴 PEDIDO DE JUAN, 2026-09-12: *«me está haciendo falta una categoría, los juegos de azar…
+  // hay aplicaciones de apuestas en línea, hay en Venezuela… cosas de esas, que son peligrosas»*.
+  //
+  // 🔴 ES LA PRIMERA CATEGORÍA DEL LIBRO CON PESO NEGATIVO. Hasta el 2026-09-12 el motor sólo
+  // sabía sumar; el mismo día Juan pidió que hubiera señales que restaran y se construyó.
+  //
+  // ⚠️⚠️ Y LA HONESTIDAD QUE HAY QUE DECIR ANTES DE QUE ALGUIEN LEA UN CERO:
+  //
+  // **Google Play NO admite aplicaciones de apuestas en Venezuela.** Las casas grandes —1xBet,
+  // 22bet, bet365— se instalan descargando el APK del sitio del operador, así que no tienen
+  // ficha que verificar y NO se declaran acá. Declarar un paquete adivinado sería lo peor
+  // posible: devolvería `false` para toda la cartera, para siempre, sin un solo error.
+  //
+  // O sea que un cero en esta categoría **no significa «no apuesta»**: significa «no tiene
+  // ninguna de las dos que sí están en la tienda». La cobertura es parcial y hay que leerla así.
+  //
+  // 📍 La señal que de verdad alcanza a las de fuera ya existe y es otra:
+  // `cfg_install_non_market_apps`. No dice que apueste; dice que su teléfono puede tener
+  // instalado lo que la tienda no le da.
+  CampoRecolectado('apuesta_tu_animalito', Transformacion.taICual,
+      queManda: 'si tiene Tu Animalito instalado',
+      paraQue: 'Apuestas: juega a los animalitos. Gasto recurrente sin contraprestación.',
+      computada: true),
+  CampoRecolectado('apuesta_betano', Transformacion.taICual,
+      queManda: 'si tiene Betano instalado',
+      paraQue: 'Apuestas: apuesta deportiva en línea con dinero real.',
+      computada: true),
   CampoRecolectado('app_zelle', Transformacion.taICual,
       queManda: 'si tiene Zelle instalado',
       paraQue: 'Puntaje: recibe o manda dinero en dólares, casi siempre desde el exterior.',

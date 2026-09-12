@@ -623,6 +623,23 @@ class SenalesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             // Navega manejando.
             "app_waze" to "com.waze",
 
+            // ── BANCA INTERNACIONAL ─────────────────────────────────────────────
+            // Acceso a divisa y a banca formal fuera del país. En Venezuela es la
+            // diferencia entre cobrar en bolívares y poder sostener una cuota indexada.
+            "banco_int_wise" to "com.transferwise.android",
+            "banco_int_revolut" to "com.revolut.revolut",
+            "banco_int_revolut_negocios" to "com.revolut.business",
+            "banco_int_payoneer" to "com.payoneer.android",
+            "banco_int_chase" to "com.chase.sig.android",
+
+            // ── APUESTAS ────────────────────────────────────────────────────────
+            // 🔴 La primera categoria con peso NEGATIVO del libro.
+            // ⚠️ Cobertura parcial y a proposito: Google Play no admite apps de apuestas
+            // en Venezuela, asi que las casas grandes se instalan por fuera y no tienen
+            // ficha que verificar. Un paquete inventado devolveria false para siempre.
+            "apuesta_tu_animalito" to "com.rexary.tuanimalito",
+            "apuesta_betano" to "com.kaizengaming.betano.sportsbook",
+
             // ── CRÉDITO EXTERNO: QUIÉN MÁS LE PRESTA ────────────────────────────
             //
             // 🔴 PEDIDO DE JUAN, 2026-09-11: *«en crédito externo, me hace falta que agregues
