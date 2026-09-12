@@ -429,7 +429,7 @@ class AkPush {
            La politica se pasa como FUNCION y no como valor: el comercio la cambia en
            caliente desde la consola, y un valor capturado acá dejaria al modulo midiendo
            con la cadencia de antes hasta que alguien reinicie la aplicacion. */
-        ModuloDeUbicacion(_ubicacion, () => _politicaDeUbicacion, () => navegador),
+        ModuloDeUbicacion(_ubicacion, () => _politicaDeUbicacion, () => navegador.currentContext),
       ]);
       /* 🔴 EL PORTERO SE REARMA CON EL COMERCIO DE AHORA, ANTES DE CORRER LOS MÓDULOS.
          Es la línea que hace efectivo el arreglo: la huella de lo ya transmitido se guarda por

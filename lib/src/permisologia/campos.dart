@@ -143,6 +143,25 @@ const List<GrupoDeSenales> gruposDeSenales = [
       '🔴 Y el límite que no se puede omitir: tener instalada la aplicación de un banco NO es '
       'tener cuenta en ese banco, y mucho menos tener saldo.',
       plataformas: ['ANDROID']),
+  /**
+   * 🔴 GRUPO PROPIO, Y ÉSTE ES EL QUE CONTESTA LA PREGUNTA CARA. Agregado el 2026-09-11.
+   *
+   * Pedido de Juan: *«en crédito externo, me hace falta que agregues Mundo Total. Todos los que
+   * prestan, los que dan créditos o aplicaciones de créditos en Venezuela, agrégalos todos»*.
+   *
+   * Separado de `app_` por el mismo motivo que la banca, y con más razón: `app_` dice «vida
+   * económica» y su advertencia es que tener pocas apps es pobreza. Éste no mide consumo —mide
+   * **a cuántos más le pidió crédito esta persona**, que es lo que decide si se le presta.
+   *
+   * ⚠️ Y el límite, que es fuerte: la aplicación instalada NO dice que deba ahí, ni cuánto, ni
+   * cómo paga. Para eso ese tercero tendría que informarlo, y en Venezuela no lo hace nadie.
+   */
+  GrupoDeSenales('credito_', 'Crédito externo',
+      'Qué otras aplicaciones de crédito y compra en cuotas tiene instaladas. Es la misma '
+      'lista PUNTUAL que Google Play permite: sólo dice si la aplicación está instalada. '
+      '🔴 El límite: NO dice que deba ahí, ni cuánto, ni si paga bien. Dice que esa persona '
+      'ya pidió —o quiso pedir— crédito en otro lado.',
+      plataformas: ['ANDROID']),
   GrupoDeSenales('usr_', 'Perfil de usuario',
       'Si la aplicación corre en el usuario principal del teléfono o en un perfil secundario, '
       'y si el aparato está en modo demostración.',
@@ -642,6 +661,76 @@ const List<CampoRecolectado> camposDeSenales = [
       queManda: 'si tiene Yummy instalada',
       paraQue: 'Movilidad: paga traslados y pedidos desde el teléfono, con un medio de pago cargado.',
       computada: true),
+
+  // ── QUIÉN MANEJA PARA GANARSE LA VIDA ───────────────────────────────────────
+  //
+  // 🔴 PEDIDO DE JUAN, 2026-09-11: *«voy a empezar a prestar créditos de moto y de carro.
+  // Entonces quiero saber si la persona tiene Yummy, o Ridery, o Yango, o cualquier aplicación
+  // que me diga que él es taxista»*.
+  //
+  // 🔴 LA APP DEL CONDUCTOR ES OTRO PAQUETE QUE LA DEL PASAJERO, y ahí está toda la señal:
+  // `com.ridery` pide el viaje, `com.ridery.conductores` lo maneja. Para un crédito de moto o
+  // de carro, la segunda dice que el teléfono es la herramienta de trabajo de esa persona —y
+  // que el vehículo que se está financiando puede pagarse solo—; la primera dice que se mueve.
+  // Por eso llevan categoría propia («Conductor») y no se mezclan con «Movilidad».
+  //
+  // ⚠️ Y EL LÍMITE, que va escrito acá porque es donde se olvida: tener la app de conductor
+  // instalada NO prueba que esté activo ni que gane con ella. Prueba que se inscribió o lo
+  // intentó. Es una señal fuerte de intención, no un comprobante de ingreso.
+  CampoRecolectado('app_conductor_ridery', Transformacion.taICual,
+      queManda: 'si tiene Ridery Conductores instalada',
+      paraQue: 'Conductor: maneja para la plataforma de movilidad más grande de Venezuela.',
+      computada: true),
+  CampoRecolectado('app_conductor_uber', Transformacion.taICual,
+      queManda: 'si tiene Uber Driver instalada',
+      paraQue: 'Conductor: la app de quien maneja o reparte para Uber, no la de quien pide viajes.',
+      computada: true),
+  CampoRecolectado('app_conductor_yango', Transformacion.taICual,
+      queManda: 'si tiene Yango Pro (Taxímetro) instalada',
+      paraQue: 'Conductor: la app de quien maneja para Yango, no la de quien pide el viaje.',
+      computada: true),
+  CampoRecolectado('app_conductor_didi', Transformacion.taICual,
+      queManda: 'si tiene DiDi Driver instalada',
+      paraQue: 'Conductor: maneja para DiDi.',
+      computada: true),
+  CampoRecolectado('app_repartidor_rappi', Transformacion.taICual,
+      queManda: 'si tiene Soy Rappi instalada',
+      paraQue: 'Conductor: reparte para Rappi, casi siempre en moto — que es justo esta cartera.',
+      computada: true),
+
+  // ── Pide viajes o pide comida: se mueve, y poco más ─────────────────────────
+  //
+  // ⚠️ Yummy e inDrive NO se pueden separar: una sola app hace pasajero y conductor. Yummy
+  // Rides se llama literalmente «Viaja y Conduce». En esas dos, tenerla instalada no distingue
+  // al taxista del pasajero, y por eso quedan de este lado, que es el flojo.
+  CampoRecolectado('app_ridery', Transformacion.taICual,
+      queManda: 'si tiene Ridery instalada',
+      paraQue: 'Movilidad: pide viajes y los paga desde el teléfono.',
+      computada: true),
+  CampoRecolectado('app_yango', Transformacion.taICual,
+      queManda: 'si tiene Yango instalada',
+      paraQue: 'Movilidad: pide viajes, comida o envíos desde el teléfono.',
+      computada: true),
+  CampoRecolectado('app_indrive', Transformacion.taICual,
+      queManda: 'si tiene inDrive instalada',
+      paraQue: 'Movilidad: pide viajes. 🔴 La misma app sirve para manejar, así que no distingue.',
+      computada: true),
+  CampoRecolectado('app_didi', Transformacion.taICual,
+      queManda: 'si tiene DiDi instalada',
+      paraQue: 'Movilidad: pide viajes y tiene la billetera de DiDi cargada.',
+      computada: true),
+  CampoRecolectado('app_pedidosya', Transformacion.taICual,
+      queManda: 'si tiene PedidosYa instalada',
+      paraQue: 'Movilidad: pide comida a domicilio, con un medio de pago cargado.',
+      computada: true),
+  CampoRecolectado('app_rappi', Transformacion.taICual,
+      queManda: 'si tiene Rappi instalada',
+      paraQue: 'Movilidad: pide comida y mandados, con un medio de pago cargado.',
+      computada: true),
+  CampoRecolectado('app_waze', Transformacion.taICual,
+      queManda: 'si tiene Waze instalado',
+      paraQue: 'Movilidad: navega manejando. Waze no es un mapa cualquiera: es el de quien va al volante.',
+      computada: true),
   CampoRecolectado('app_zelle', Transformacion.taICual,
       queManda: 'si tiene Zelle instalado',
       paraQue: 'Puntaje: recibe o manda dinero en dólares, casi siempre desde el exterior.',
@@ -653,6 +742,73 @@ const List<CampoRecolectado> camposDeSenales = [
   CampoRecolectado('app_spotify', Transformacion.taICual,
       queManda: 'si tiene Spotify instalado',
       paraQue: 'Puntaje: otra suscripción mensual; sumada a la anterior, un hábito de pago recurrente.',
+      computada: true),
+
+  // ── CRÉDITO EXTERNO: QUIÉN MÁS LE PRESTA ─────────────────────────────────────
+  //
+  // 🔴 PEDIDO DE JUAN, 2026-09-11: *«en crédito externo, me hace falta que agregues Mundo Total.
+  // Todos los que prestan, los que dan créditos o aplicaciones de créditos en Venezuela,
+  // agrégalos todos, búscalos en Play Store y me los agregas»*.
+  //
+  // Los nueve paquetes están verificados contra su ficha de Google Play, uno por uno. Uno mal
+  // escrito devuelve «no instalada» para toda la cartera, para siempre, sin dar síntoma.
+  //
+  // ⚠️ CASHEA NO ESTÁ ACÁ y no es un olvido: ya existía como `app_cashea` y la clave viaja
+  // adentro de sellos ya emitidos, así que no se renombra. Cambia de CATEGORÍA en el libro de
+  // elegibilidad —de «Compras y cuotas» a «Crédito externo»—, que es donde eso se decide.
+  CampoRecolectado('credito_creditotal', Transformacion.taICual,
+      queManda: 'si tiene CrediTotal (Mundo Total) instalada',
+      paraQue:
+          'Crédito externo: compra a crédito en la cadena de Mundo Total, que financia con cuotas propias. '
+          'Es la línea de crédito más grande del comercio minorista venezolano. NO dice si debe ahí ni cómo paga.',
+      computada: true),
+  CampoRecolectado('credito_krece', Transformacion.taICual,
+      queManda: 'si tiene Krece instalada',
+      paraQue:
+          'Crédito externo: financia teléfonos en cuotas, y el aparato queda bloqueable si deja de pagar. '
+          '🔴 Señal fuerte: quien financia el teléfono con el que se mide suele no tener otra vía. NO dice si debe ahí ni cómo paga.',
+      computada: true),
+  CampoRecolectado('credito_rapikom', Transformacion.taICual,
+      queManda: 'si tiene Rapikom instalada',
+      paraQue:
+          'Crédito externo: compra en tres cuotas sin intereses en más de tres mil comercios aliados. '
+          'Competidor directo de Cashea. NO dice si debe ahí ni cómo paga.',
+      computada: true),
+  CampoRecolectado('credito_lysto', Transformacion.taICual,
+      queManda: 'si tiene Lysto instalada',
+      paraQue:
+          'Crédito externo: compra ahora y paga después, en cuotas sin intereses. '
+          'Competidor directo. NO dice si debe ahí ni cómo paga.',
+      computada: true),
+  CampoRecolectado('credito_chollo', Transformacion.taICual,
+      queManda: 'si tiene Chollo instalada',
+      paraQue:
+          'Crédito externo: compra en cuotas, fuerte en calzado y comercio minorista. '
+          'Competidor directo. NO dice si debe ahí ni cómo paga.',
+      computada: true),
+  CampoRecolectado('credito_weppa', Transformacion.taICual,
+      queManda: 'si tiene Weppa instalada',
+      paraQue:
+          'Crédito externo: financia teléfonos en cuotas. '
+          'Mismo nicho que Krece: el aparato como garantía. NO dice si debe ahí ni cómo paga.',
+      computada: true),
+  CampoRecolectado('credito_confiao', Transformacion.taICual,
+      queManda: 'si tiene Confiao instalada',
+      paraQue:
+          'Crédito externo: compra ahora y paga después, de IPAS Financia. '
+          'Competidor directo. NO dice si debe ahí ni cómo paga.',
+      computada: true),
+  CampoRecolectado('credito_crediya', Transformacion.taICual,
+      queManda: 'si tiene CrediYa instalada',
+      paraQue:
+          'Crédito externo: gestión de créditos personales en Venezuela. '
+          'Crédito en efectivo, no compra en cuotas: es otra deuda y otro perfil. NO dice si debe ahí ni cómo paga.',
+      computada: true),
+  CampoRecolectado('credito_bancaribe_cuotas', Transformacion.taICual,
+      queManda: 'si tiene Compra a Cuotas de Bancaribe instalada',
+      paraQue:
+          'Crédito externo: compra hoy y paga en cuatro cuotas sin interés, con un banco detrás. '
+          '⚠️ No confundir con `banco_bancaribe`: ésa es la app del banco, ésta es la de crédito. NO dice si debe ahí ni cómo paga.',
       computada: true),
 
   // ── Entregabilidad (¿el push va a llegar y lo va a ver?) ──────────────────────────────

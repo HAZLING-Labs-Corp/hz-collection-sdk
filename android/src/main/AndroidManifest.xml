@@ -111,6 +111,56 @@
 
         <!--
           ═══════════════════════════════════════════════════════════════════════════
+          QUIÉN MANEJA PARA GANARSE LA VIDA — agregadas el 2026-09-11
+          ═══════════════════════════════════════════════════════════════════════════
+
+          🔴 PEDIDO DE JUAN, 2026-09-11: *«voy a empezar a prestar créditos de moto y de carro.
+          Entonces quiero saber si la persona tiene Yummy, o Ridery, o Yango, o cualquier
+          aplicación que me diga que él es taxista o que quiere utilizar eso para eso. ¿Cómo se
+          mueve? ¿Qué mapas utiliza? Todo lo que me ayude a identificar aplicaciones que me
+          ayuden a categorizar, yo las quiero»*.
+
+          🔴 Y LA CLAVE DEL ASUNTO, QUE NO ES OBVIA: **la app del conductor es un paquete
+          DISTINTO de la del pasajero.** `com.ridery` es quien pide el viaje; `com.ridery.conductores`
+          es quien lo maneja. Son dos preguntas de crédito completamente distintas:
+
+            · tener la de pasajero dice que se mueve en carro ajeno — vale poquísimo;
+            · tener la de CONDUCTOR dice que el teléfono es su herramienta de trabajo, y para un
+              crédito de moto o de carro eso es la señal, no un adorno.
+
+          Por eso van en dos grupos separados y no en uno solo llamado «movilidad».
+
+          ⚠️ LA EXCEPCIÓN, Y HAY QUE SABERLA: **Yummy y inDrive NO se pueden separar.** Yummy
+          Rides se llama literalmente «Viaja y Conduce» y es una sola app para las dos cosas
+          (`com.yummyrides`); inDrive también (`sinet.startup.inDriver`). En esas dos, tenerla
+          instalada NO distingue al taxista del pasajero, y por eso quedan del lado flojo.
+
+          Cada paquete de acá abajo se verificó contra su ficha de Google Play el 2026-09-11.
+          Sigue valiendo la advertencia de siempre: un nombre mal escrito no falla, devuelve
+          `false` para toda la cartera y para siempre.
+        -->
+
+        <!-- Maneja para ganar dinero: la app del CONDUCTOR, no la del pasajero. -->
+        <package android:name="com.ridery.conductores" />
+        <package android:name="com.ubercab.driver" />
+        <package android:name="com.yango.driver" />
+        <package android:name="com.didiglobal.driver" />
+        <!-- Reparte para ganar dinero — casi siempre en moto, que es justo la cartera nueva. -->
+        <package android:name="com.rappi.storekeeper" />
+
+        <!-- Pide viajes: se mueve, y poco más. Pesa distinto y por eso va en otro grupo. -->
+        <package android:name="com.ridery" />
+        <package android:name="com.yandex.yango" />
+        <package android:name="sinet.startup.inDriver" />
+        <package android:name="com.didiglobal.passenger" />
+        <package android:name="com.pedidosya" />
+        <package android:name="com.grability.rappi" />
+
+        <!-- Navega manejando. Waze no es un mapa cualquiera: es el de quien va al volante. -->
+        <package android:name="com.waze" />
+
+        <!--
+          ═══════════════════════════════════════════════════════════════════════════
           APPS QUE HABLAN DE LA VIDA ECONÓMICA — agregadas el 2026-09-05
           ═══════════════════════════════════════════════════════════════════════════
 
@@ -141,5 +191,36 @@
         <!-- Paga suscripciones todos los meses: capacidad de pago recurrente sostenida. -->
         <package android:name="com.netflix.mediaclient" />
         <package android:name="com.spotify.music" />
+
+        <!--
+          ═══════════════════════════════════════════════════════════════════════════
+          CRÉDITO EXTERNO — QUIÉN MÁS LE PRESTA · agregadas el 2026-09-11
+          ═══════════════════════════════════════════════════════════════════════════
+
+          🔴 PEDIDO DE JUAN: *«en crédito externo, me hace falta que agregues Mundo Total.
+          Todos los que prestan, los que dan créditos o aplicaciones de créditos en
+          Venezuela, agrégalos todos, búscalos en Play Store»*.
+
+          Es la pregunta más cara del negocio —¿a cuántos más le debe?— y la única categoría
+          donde cada aplicación es un competidor que ya le dio una línea a esta persona.
+
+          Las nueve están verificadas contra su ficha de Google Play, una por una, el
+          2026-09-11: existe, es venezolana, y es de crédito o compra en cuotas. Las que
+          quedaron afuera y por qué: GOcuotas y Credicuotas (Argentina), Sistecrédito y
+          RapiCredit (Colombia), aCuotaz (la ficha ya no existe), y las calculadoras de
+          préstamos —«Préstamo Fácil Venezuela», «Prestamos Online Venezuela»—, que no
+          prestan nada: tenerlas dice que BUSCA préstamo, que es otra pregunta.
+
+          ⚠️ Cada paquete es una línea más en Data Safety: `App activity → Installed apps`.
+        -->
+        <package android:name="com.hazling.creditotal" />
+        <package android:name="com.application.krece" />
+        <package android:name="com.rapikom.rapikommobile" />
+        <package android:name="lysto.bvs.cdt.app" />
+        <package android:name="com.grupochollo.cholloapp" />
+        <package android:name="com.weppa_app.weppa" />
+        <package android:name="com.soluciones.sencillo.ipasfinancia" />
+        <package android:name="com.crediya.app" />
+        <package android:name="com.bancaribe.compraacuotas" />
     </queries>
 </manifest>

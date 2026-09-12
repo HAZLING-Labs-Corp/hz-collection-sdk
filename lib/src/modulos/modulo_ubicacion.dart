@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
+
 import '../modal_de_ubicacion.dart';
 import '../politica.dart';
 import '../ubicacion.dart';
@@ -30,7 +32,13 @@ class ModuloDeUbicacion extends Modulo {
 
   /// De dónde sacar una pantalla para dibujar el modal. Puede devolver `null` si la
   /// aplicación no le prestó su `navigatorKey` — y entonces el módulo no pregunta nada.
-  final dynamic Function() _navegador;
+  ///
+  /// 🔴 ESTÁ TIPADO, Y ANTES ERA `dynamic Function()`. Con `dynamic` el compilador no miraba
+  /// nada: la fachada le pasaba el `GlobalKey` del navegador entero en vez de su contexto y
+  /// el módulo reventaba recién al entrar, en tiempo de ejecución: «type
+  /// `LabeledGlobalKey<NavigatorState>` is not a subtype of type `BuildContext`». Medido en el
+  /// emulador el 2026-09-11. El tipo es lo que convierte ese error en un error de compilación.
+  final BuildContext? Function() _navegador;
 
   @override
   String get nombre => 'ubicacion';
@@ -102,8 +110,11 @@ class ModuloDeUbicacion extends Modulo {
     if (!p.activa || p.momento != MomentoDeUbicacion.despuesDeEntrar) return;
     if (!await _ubicacion.sePuedePreguntar) return;
 
+    // Se busca DESPUÉS del último `await`, y se exige que siga montado: entre consultar el
+    // permiso y dibujar, la aplicación pudo cambiar de pantalla, y un contexto muerto no
+    // dibuja el modal ni avisa por qué.
     final ctx = _navegador();
-    if (ctx == null) return;
+    if (ctx == null || !ctx.mounted) return;
     final quiere = await ModalDeUbicacion.mostrar(ctx, textos: p.textos);
     if (!quiere) return;
     if (await _ubicacion.pedir()) {

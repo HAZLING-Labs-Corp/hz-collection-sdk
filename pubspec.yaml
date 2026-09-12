@@ -1,6 +1,6 @@
 name: hz_collection_sdk
 description: "Recibir notificaciones push con una llave y una línea. La cuenta de Google llega desde el servidor: no se pega ningún archivo de configuración."
-version: 0.2.0
+version: 0.3.0
 publish_to: 'none'
 repository: https://github.com/HAZLING-Labs-Corp/ak-push-flutter
 

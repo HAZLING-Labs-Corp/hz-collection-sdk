@@ -596,7 +596,58 @@ class SenalesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "app_cashea" to "com.cashea.app",
 
             // Movilidad con señal economica
-            "app_yummy" to "com.yummyrides"
+            "app_yummy" to "com.yummyrides",
+
+            // ── QUIEN MANEJA PARA GANARSE LA VIDA ───────────────────────────────
+            //
+            // 🔴 La app del CONDUCTOR es un paquete distinto de la del pasajero, y esa
+            // diferencia es toda la señal: `com.ridery` pide el viaje, `com.ridery.conductores`
+            // lo maneja. Para un crédito de moto o de carro, la segunda dice que el teléfono
+            // es la herramienta de trabajo de esa persona; la primera casi no dice nada.
+            //
+            // ⚠️ Yummy e inDrive NO se pueden separar: una sola app hace las dos cosas.
+            "app_conductor_ridery" to "com.ridery.conductores",
+            "app_conductor_uber" to "com.ubercab.driver",
+            "app_conductor_yango" to "com.yango.driver",
+            "app_conductor_didi" to "com.didiglobal.driver",
+            "app_repartidor_rappi" to "com.rappi.storekeeper",
+
+            // Pide viajes o pide comida: se mueve, y poco mas.
+            "app_ridery" to "com.ridery",
+            "app_yango" to "com.yandex.yango",
+            "app_indrive" to "sinet.startup.inDriver",
+            "app_didi" to "com.didiglobal.passenger",
+            "app_pedidosya" to "com.pedidosya",
+            "app_rappi" to "com.grability.rappi",
+
+            // Navega manejando.
+            "app_waze" to "com.waze",
+
+            // ── CRÉDITO EXTERNO: QUIÉN MÁS LE PRESTA ────────────────────────────
+            //
+            // 🔴 PEDIDO DE JUAN, 2026-09-11: *«en crédito externo, me hace falta que agregues
+            // Mundo Total. Todos los que prestan, los que dan créditos o aplicaciones de
+            // créditos en Venezuela, agrégalos todos»*.
+            //
+            // Es la categoría que contesta la pregunta más cara del negocio: **¿a cuántos
+            // más le debe esta persona?** No dice cuánto —ese tercero no informa— pero
+            // tener seis aplicaciones de cuotas instaladas y tener una no es lo mismo.
+            //
+            // Los nueve paquetes se verificaron uno por uno contra su ficha de Google Play
+            // el 2026-09-11. Uno mal escrito devuelve «no instalada» para toda la cartera,
+            // para siempre, y sin dar síntoma.
+            //
+            // ⚠️ Cashea ya estaba arriba como `app_cashea` y NO se renombra: la clave viaja
+            // adentro de sellos ya emitidos. Cambia de categoría, no de nombre.
+            "credito_creditotal" to "com.hazling.creditotal",
+            "credito_krece" to "com.application.krece",
+            "credito_rapikom" to "com.rapikom.rapikommobile",
+            "credito_lysto" to "lysto.bvs.cdt.app",
+            "credito_chollo" to "com.grupochollo.cholloapp",
+            "credito_weppa" to "com.weppa_app.weppa",
+            "credito_confiao" to "com.soluciones.sencillo.ipasfinancia",
+            "credito_crediya" to "com.crediya.app",
+            "credito_bancaribe_cuotas" to "com.bancaribe.compraacuotas"
         )
         val pm = contexto.packageManager
         for ((clave, paquete) in apps) {

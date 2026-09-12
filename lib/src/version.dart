@@ -21,4 +21,4 @@
 library;
 
 /// La versión del SDK, igual que la de `pubspec.yaml`.
-const String versionDelSdk = '0.2.0';
+const String versionDelSdk = '0.3.0';
