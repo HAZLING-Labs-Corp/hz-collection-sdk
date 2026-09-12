@@ -583,13 +583,23 @@ const List<CampoRecolectado> camposDeSenales = [
   // pocas apps NO es riesgo de crédito, es pobreza. Estas señales sirven si conservan poder
   // predictivo **controlando por nivel de ingreso**; si no lo conservan, se sacan aunque
   // mejoren el número.
+  // 🔴 CATEGORÍA CORREGIDA EL 2026-09-12. Decía «Puntaje», que es la categoría genérica con la
+  // que entraron las primeras aplicaciones —antes de que existieran las categorías por
+  // significado— y que pesa 6. El efecto, medido ese día: esta señal pesaba SEIS veces lo que
+  // pesaba su hermana de la misma familia. Nadie lo decidió: fue el orden en que se agregaron.
+  // Google Maps pesaba 6 y Waze 1, los dos en «Movilidad y viajes».
   CampoRecolectado('app_mapas', Transformacion.taICual,
       queManda: 'si tiene Google Maps instalado',
-      paraQue: 'Puntaje: se mueve y se orienta con el teléfono. Es la base de «cuánto se mueve».',
+      paraQue: 'Movilidad: se mueve y se orienta con el teléfono. Es la base de «cuánto se mueve».',
       computada: true),
+  // 🔴 CATEGORÍA CORREGIDA EL 2026-09-12. Decía «Puntaje», que es la categoría genérica con la
+  // que entraron las primeras aplicaciones —antes de que existieran las categorías por
+  // significado— y que pesa 6. El efecto, medido ese día: esta señal pesaba SEIS veces lo que
+  // pesaba su hermana de la misma familia. Nadie lo decidió: fue el orden en que se agregaron.
+  // Es `com.ubercab`, o sea Uber PASAJERO: pesaba 6 y Ridery pasajero 1, siendo la misma cosa.
   CampoRecolectado('app_viajes', Transformacion.taICual,
       queManda: 'si tiene una app de viajes instalada',
-      paraQue: 'Puntaje: paga traslados desde el teléfono, con un medio de pago cargado.',
+      paraQue: 'Movilidad: paga traslados desde el teléfono, con un medio de pago cargado.',
       computada: true),
   CampoRecolectado('app_mercadolibre', Transformacion.taICual,
       queManda: 'si tiene Mercado Libre instalado',
@@ -599,9 +609,14 @@ const List<CampoRecolectado> camposDeSenales = [
       queManda: 'si tiene Mercado Pago instalado',
       paraQue: 'Puntaje: mueve dinero digital. Es la señal económica más directa de esta familia.',
       computada: true),
+  // 🔴 CATEGORÍA CORREGIDA EL 2026-09-12. Decía «Puntaje», que es la categoría genérica con la
+  // que entraron las primeras aplicaciones —antes de que existieran las categorías por
+  // significado— y que pesa 6. El efecto, medido ese día: esta señal pesaba SEIS veces lo que
+  // pesaba su hermana de la misma familia. Nadie lo decidió: fue el orden en que se agregaron.
+  // Binance pesaba 6 y Zinli, Airtm y Wally 3, las cuatro en «Billeteras y dólares».
   CampoRecolectado('app_binance', Transformacion.taICual,
       queManda: 'si tiene Binance instalado',
-      paraQue: 'Puntaje: en Venezuela es una forma corriente de tener y mover divisas.',
+      paraQue: 'Billetera: en Venezuela es una forma corriente de tener y mover divisas.',
       computada: true),
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -837,9 +852,14 @@ const List<CampoRecolectado> camposDeSenales = [
       queManda: 'si tiene Betano instalado',
       paraQue: 'Apuestas: apuesta deportiva en línea con dinero real.',
       computada: true),
+  // 🔴 CATEGORÍA CORREGIDA EL 2026-09-12. Decía «Puntaje», que es la categoría genérica con la
+  // que entraron las primeras aplicaciones —antes de que existieran las categorías por
+  // significado— y que pesa 6. El efecto, medido ese día: esta señal pesaba SEIS veces lo que
+  // pesaba su hermana de la misma familia. Nadie lo decidió: fue el orden en que se agregaron.
+  // Mismo caso que Binance.
   CampoRecolectado('app_zelle', Transformacion.taICual,
       queManda: 'si tiene Zelle instalado',
-      paraQue: 'Puntaje: recibe o manda dinero en dólares, casi siempre desde el exterior.',
+      paraQue: 'Billetera: recibe o manda dinero en dólares, casi siempre desde el exterior.',
       computada: true),
   CampoRecolectado('app_netflix', Transformacion.taICual,
       queManda: 'si tiene Netflix instalado',
