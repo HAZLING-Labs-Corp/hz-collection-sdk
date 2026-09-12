@@ -436,9 +436,15 @@ const List<CampoRecolectado> camposDeSenales = [
   CampoRecolectado('hd_version_del_sistema', Transformacion.taICual,
       queManda: 'qué versión de Android tiene',
       paraQue: 'Puntaje y antigüedad: una versión vieja de Android sugiere un teléfono viejo o abandonado.'),
+  // 🔴 LLEVA PREFIJO DE CATEGORÍA, Y ANTES NO. Sin él, `categoriaDe()` del back devuelve la
+  // ORACIÓN ENTERA como nombre de categoría —«Igual que la versión, en número, para comparar con
+  // precisión.»— y esa categoría no tiene peso en ningún libro, así que la señal quedaba
+  // excluida del libro de elegibilidad sin que nada lo dijera. Medido el 2026-09-11 contra el
+  // catálogo generado. Va con la misma categoría que `hd_version_del_sistema`, que es lo mismo
+  // en texto.
   CampoRecolectado('hd_api', Transformacion.taICual,
       queManda: 'el número interno de esa versión de Android',
-      paraQue: 'Igual que la versión, en número, para comparar con precisión.'),
+      paraQue: 'Puntaje y antigüedad: igual que la versión, en número, para comparar con precisión.'),
   CampoRecolectado('hd_arquitectura', Transformacion.taICual,
       queManda: 'qué tipo de procesador tiene',
       paraQue: 'Autenticidad: el tipo de procesador; ciertos valores delatan un emulador de escritorio.'),
