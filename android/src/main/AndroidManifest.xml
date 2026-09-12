@@ -67,6 +67,50 @@
 
         <!--
           ═══════════════════════════════════════════════════════════════════════════
+          BANCA Y DINERO DE VENEZUELA — agregadas el 2026-09-11
+          ═══════════════════════════════════════════════════════════════════════════
+          Pedido de Juan: «ponme todas las aplicaciones financieras de Venezuela… una lista
+          grande donde yo pueda seleccionar antes el manifiesto».
+
+          🔴 LOS DIECIOCHO ESTÁN VERIFICADOS CONTRA SU FICHA DE GOOGLE PLAY, uno por uno. No
+          es una formalidad: un paquete mal escrito NO falla, devuelve «no instalada» para
+          toda la cartera, para siempre, y nadie se entera nunca. Es el peor error que esta
+          lista puede tener, porque no da síntoma.
+
+          Los que NO se pudieron verificar quedaron AFUERA a propósito —Banco Activo, Banco
+          Plaza, 100% Banco, Mi Banco, BANFANB, Caroní, Sofitasa, Fondo Común, Reserve,
+          Ualá—. El catálogo con los veinte está en
+          `expedientes/collection/front/catalogo-de-apps-financieras-venezuela.md`.
+
+          ⚠️ Y cada paquete de acá es una línea más en Data Safety: se declara como
+          `App activity → Installed apps`, igual que las anteriores.
+        -->
+        <!-- Banca universal -->
+        <package android:name="com.bancodevenezuela.bdvdigital" />
+        <package android:name="com.banesco.samfbancamovilunificada" />
+        <package android:name="com.mercantilbanco.mercantilmovil" />
+        <package android:name="bnc.bncnet.mobile2" />
+        <package android:name="com.dinerorapido.bancamovil" />
+        <package android:name="com.totaltexto.bancamovil" />
+        <package android:name="com.bbva.empresas" />
+        <package android:name="bancaribe.miconexion" />
+        <package android:name="com.bancoexterior" />
+        <package android:name="com.tesoro.tmovil" />
+        <package android:name="com.bancamiga" />
+        <package android:name="com.asociadosgerenciales.banpluspay" />
+        <!-- Pago móvil interbancario -->
+        <package android:name="net.comsolje.pagomovilsms" />
+        <!-- Billeteras y dólares -->
+        <package android:name="com.zinli.app" />
+        <package android:name="com.airtm.android" />
+        <package android:name="com.kinpos.wallytech" />
+        <!-- Compras en cuotas -->
+        <package android:name="com.cashea.app" />
+        <!-- Movilidad con señal económica -->
+        <package android:name="com.yummyrides" />
+
+        <!--
+          ═══════════════════════════════════════════════════════════════════════════
           APPS QUE HABLAN DE LA VIDA ECONÓMICA — agregadas el 2026-09-05
           ═══════════════════════════════════════════════════════════════════════════
 

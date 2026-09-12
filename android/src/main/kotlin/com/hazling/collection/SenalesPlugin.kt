@@ -557,7 +557,46 @@ class SenalesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "app_binance" to "com.binance.dev",
             "app_zelle" to "com.zellepay.zelle",
             "app_netflix" to "com.netflix.mediaclient",
-            "app_spotify" to "com.spotify.music"
+            "app_spotify" to "com.spotify.music",
+
+            // ── Banca y dinero de Venezuela — agregadas el 2026-09-11 ───────────────
+            //
+            // Pedido de Juan: la lista de aplicaciones financieras del pais, para que el
+            // libro de elegibilidad pueda mirar con cuantas instituciones formales tiene
+            // relacion operativa una persona.
+            //
+            // 🔴 LOS DIECIOCHO ESTAN VERIFICADOS CONTRA SU FICHA DE GOOGLE PLAY. Vale la
+            // advertencia de arriba, y aca pesa el doble: un paquete mal escrito diria «no
+            // tiene Banesco» de TODA la cartera venezolana, para siempre, sin dar sintoma.
+            // Los que no se pudieron verificar quedaron afuera a proposito.
+            //
+            // ⚠️ Y ninguna de estas puntua todavia: la categoria «banca» del libro esta
+            // declarada y VACIA hasta que estas señales viajen de verdad. Se prende cuando
+            // se vean en `true` en un telefono real.
+            "banco_bdv" to "com.bancodevenezuela.bdvdigital",
+            "banco_banesco" to "com.banesco.samfbancamovilunificada",
+            "banco_mercantil" to "com.mercantilbanco.mercantilmovil",
+            "banco_bnc" to "bnc.bncnet.mobile2",
+            "banco_provincial_dinero_rapido" to "com.dinerorapido.bancamovil",
+            "banco_provinet_movil" to "com.totaltexto.bancamovil",
+            "banco_provinet_empresas" to "com.bbva.empresas",
+            "banco_bancaribe" to "bancaribe.miconexion",
+            "banco_exterior" to "com.bancoexterior",
+            "banco_tesoro" to "com.tesoro.tmovil",
+            "banco_bancamiga" to "com.bancamiga",
+            "banco_banplus" to "com.asociadosgerenciales.banpluspay",
+            "banco_pago_movil_sms" to "net.comsolje.pagomovilsms",
+
+            // Billeteras y dolares
+            "app_zinli" to "com.zinli.app",
+            "app_airtm" to "com.airtm.android",
+            "app_wally" to "com.kinpos.wallytech",
+
+            // Compras en cuotas — un competidor directo, y por eso importa
+            "app_cashea" to "com.cashea.app",
+
+            // Movilidad con señal economica
+            "app_yummy" to "com.yummyrides"
         )
         val pm = contexto.packageManager
         for ((clave, paquete) in apps) {

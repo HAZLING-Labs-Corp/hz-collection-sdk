@@ -125,6 +125,24 @@ const List<GrupoDeSenales> gruposDeSenales = [
       '🔴 Y la trampa: tener pocas apps no es riesgo de crédito, es pobreza. Sirven si '
       'conservan poder predictivo controlando por nivel de ingreso; si no, se sacan.',
       plataformas: ['ANDROID']),
+  /**
+   * 🔴 GRUPO PROPIO, Y NO ADENTRO DE `app_`. Agregado el 2026-09-11.
+   *
+   * La banca podría haber entrado como `app_` —también son aplicaciones instaladas— y se le dio
+   * grupo propio a propósito: `app_` dice «vida económica» en general, y su propia advertencia
+   * es que tener pocas apps es pobreza, no riesgo. La banca contesta otra pregunta —con cuántas
+   * instituciones FORMALES tiene relación operativa— y mezclarlas haría que un teléfono con
+   * Netflix y Spotify pese lo mismo que uno con tres bancos.
+   *
+   * Y separado se puede apagar entero: un comercio que decida no mirar banca apaga el grupo, no
+   * trece señales una por una.
+   */
+  GrupoDeSenales('banco_', 'Banca',
+      'Con cuántas instituciones financieras formales tiene relación operativa. Es la misma '
+      'lista PUNTUAL que Google Play permite: sólo dice si la aplicación está instalada. '
+      '🔴 Y el límite que no se puede omitir: tener instalada la aplicación de un banco NO es '
+      'tener cuenta en ese banco, y mucho menos tener saldo.',
+      plataformas: ['ANDROID']),
   GrupoDeSenales('usr_', 'Perfil de usuario',
       'Si la aplicación corre en el usuario principal del teléfono o en un perfil secundario, '
       'y si el aparato está en modo demostración.',
@@ -522,6 +540,107 @@ const List<CampoRecolectado> camposDeSenales = [
   CampoRecolectado('app_binance', Transformacion.taICual,
       queManda: 'si tiene Binance instalado',
       paraQue: 'Puntaje: en Venezuela es una forma corriente de tener y mover divisas.',
+      computada: true),
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // BANCA Y DINERO DE VENEZUELA — agregadas el 2026-09-11
+  // ══════════════════════════════════════════════════════════════════════════════
+  //
+  // Pedido de Juan: la lista de aplicaciones financieras del país, para que el libro de
+  // elegibilidad pueda mirar con cuántas instituciones formales tiene relación operativa
+  // una persona.
+  //
+  // 🔴 EL LÍMITE VA EN CADA UNA, Y NO ES UN ADORNO: tener instalada la aplicación de un
+  // banco NO es tener cuenta en ese banco, y mucho menos tener saldo. El `paraQue` lo dice
+  // porque ese texto es el que termina leyendo un comercio en el dictamen.
+  //
+  // 🔴 Los dieciocho paquetes están verificados contra su ficha de Google Play. Uno mal
+  // escrito devuelve «no instalada» para toda la cartera, para siempre, sin dar síntoma.
+
+  // ── Banca universal ─────────────────────────────────────────────────────────
+  CampoRecolectado('banco_bdv', Transformacion.taICual,
+      queManda: 'si tiene la app del Banco de Venezuela instalada',
+      paraQue: 'Banca: relación operativa con una institución formal. No dice que tenga cuenta ni saldo.',
+      computada: true),
+  CampoRecolectado('banco_banesco', Transformacion.taICual,
+      queManda: 'si tiene la app de Banesco instalada',
+      paraQue: 'Banca: relación operativa con una institución formal. No dice que tenga cuenta ni saldo.',
+      computada: true),
+  CampoRecolectado('banco_mercantil', Transformacion.taICual,
+      queManda: 'si tiene la app de Mercantil instalada',
+      paraQue: 'Banca: relación operativa con una institución formal. No dice que tenga cuenta ni saldo.',
+      computada: true),
+  CampoRecolectado('banco_bnc', Transformacion.taICual,
+      queManda: 'si tiene la app del BNC instalada',
+      paraQue: 'Banca: relación operativa con una institución formal. No dice que tenga cuenta ni saldo.',
+      computada: true),
+  CampoRecolectado('banco_provincial_dinero_rapido', Transformacion.taICual,
+      queManda: 'si tiene Provincial Dinero Rápido instalada',
+      paraQue: 'Banca: relación operativa con una institución formal. No dice que tenga cuenta ni saldo.',
+      computada: true),
+  CampoRecolectado('banco_provinet_movil', Transformacion.taICual,
+      queManda: 'si tiene Provinet Móvil instalada',
+      paraQue: 'Banca: relación operativa con una institución formal. No dice que tenga cuenta ni saldo.',
+      computada: true),
+  CampoRecolectado('banco_provinet_empresas', Transformacion.taICual,
+      queManda: 'si tiene Provinet Empresas instalada',
+      paraQue:
+          'Banca: la versión de empresas sugiere actividad comercial, no sólo personal. '
+          'No prueba que tenga una empresa.',
+      computada: true),
+  CampoRecolectado('banco_bancaribe', Transformacion.taICual,
+      queManda: 'si tiene la app de Bancaribe instalada',
+      paraQue: 'Banca: relación operativa con una institución formal. No dice que tenga cuenta ni saldo.',
+      computada: true),
+  CampoRecolectado('banco_exterior', Transformacion.taICual,
+      queManda: 'si tiene la app del Banco Exterior instalada',
+      paraQue: 'Banca: relación operativa con una institución formal. No dice que tenga cuenta ni saldo.',
+      computada: true),
+  CampoRecolectado('banco_tesoro', Transformacion.taICual,
+      queManda: 'si tiene la app del Banco del Tesoro instalada',
+      paraQue: 'Banca: relación operativa con una institución formal. No dice que tenga cuenta ni saldo.',
+      computada: true),
+  CampoRecolectado('banco_bancamiga', Transformacion.taICual,
+      queManda: 'si tiene la app de Bancamiga instalada',
+      paraQue: 'Banca: relación operativa con una institución formal. No dice que tenga cuenta ni saldo.',
+      computada: true),
+  CampoRecolectado('banco_banplus', Transformacion.taICual,
+      queManda: 'si tiene la app de Banplus instalada',
+      paraQue: 'Banca: relación operativa con una institución formal. No dice que tenga cuenta ni saldo.',
+      computada: true),
+  CampoRecolectado('banco_pago_movil_sms', Transformacion.taICual,
+      queManda: 'si tiene Pago Móvil SMS instalada',
+      paraQue:
+          'Banca: integra trece bancos en una sola app, así que tenerla sugiere que opera por '
+          'pago móvil. No dice con cuál banco.',
+      computada: true),
+
+  // ── Billeteras y dólares ────────────────────────────────────────────────────
+  CampoRecolectado('app_zinli', Transformacion.taICual,
+      queManda: 'si tiene Zinli instalada',
+      paraQue: 'Billetera: billetera de dólares. Acceso a una vía, no ingreso en dólares.',
+      computada: true),
+  CampoRecolectado('app_airtm', Transformacion.taICual,
+      queManda: 'si tiene Airtm instalada',
+      paraQue: 'Billetera: mueve dinero hacia y desde afuera. No dice cuánto ni con qué frecuencia.',
+      computada: true),
+  CampoRecolectado('app_wally', Transformacion.taICual,
+      queManda: 'si tiene Wally instalada',
+      paraQue: 'Billetera: remesas y tarjeta digital. No dice que reciba remesas.',
+      computada: true),
+
+  // ── Compras en cuotas ───────────────────────────────────────────────────────
+  CampoRecolectado('app_cashea', Transformacion.taICual,
+      queManda: 'si tiene Cashea instalada',
+      paraQue:
+          'Crédito externo: ya compra a crédito en otro lado. 🔴 NO dice si debe ahí ni cómo paga: para '
+          'eso ese tercero tendría que informarlo, y no lo hace.',
+      computada: true),
+
+  // ── Movilidad con señal económica ───────────────────────────────────────────
+  CampoRecolectado('app_yummy', Transformacion.taICual,
+      queManda: 'si tiene Yummy instalada',
+      paraQue: 'Movilidad: paga traslados y pedidos desde el teléfono, con un medio de pago cargado.',
       computada: true),
   CampoRecolectado('app_zelle', Transformacion.taICual,
       queManda: 'si tiene Zelle instalado',
