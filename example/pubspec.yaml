@@ -69,6 +69,12 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
+  # 🔴 Sólo para PROBAR, y por eso está en dev: el simulador de iOS no acepta toques por línea
+  # de comandos —`simctl` no tiene `tap`— así que la única forma de caminarlo desde afuera es
+  # el driver. Se usa con `lib/main_probado.dart`; la app de verdad no lo importa nunca.
+  flutter_driver:
+    sdk: flutter
+
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your
