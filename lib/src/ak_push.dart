@@ -143,6 +143,23 @@ class AkPush {
     }
     return u;
   }
+
+  /// 🔴 LO MISMO, PERO PARA MIRAR — y la diferencia importa más de lo que parece.
+  ///
+  /// Preguntar «¿en qué modo está la ubicación?» **antes** de `init()` es una pregunta
+  /// legítima: una pantalla se dibuja cuando le toca, no cuando el SDK está listo. Con el
+  /// getter de arriba esa pregunta **tumbaba la aplicación**.
+  ///
+  /// Medido el 2026-09-15 con la app de ejemplo entrando por el llavero: al elegir el
+  /// comercio, la pantalla se arma antes de que corra `init()`, `_LineaDeUbicacion` lee el
+  /// modo, y salta `Bad state: hay que llamar a AkPush.init()…`. La excepción se la traga el
+  /// árbol de widgets, así que **desde afuera parecía que el toque no hacía nada**: ni
+  /// pantalla roja, ni una petición al servidor, ni un solo síntoma que apuntara acá.
+  ///
+  /// Un getter de LECTURA no puede tumbar a quien lo consulta. Los que ACTÚAN —pedir el
+  /// permiso, prender la lectura continua— siguen exigiendo `init()`, porque ahí sí hace
+  /// falta un cliente a dónde mandar la posición.
+  Ubicacion? get _ubicacionSiHay => _ubicacionInterna;
   AkPushConfig? _config;
   final ConfigStore _almacen = ConfigStore();
 
@@ -636,10 +653,11 @@ class AkPush {
   /// `false` cuando ya la concedió o cuando la denegó para siempre — en ese
   /// último caso el diálogo del sistema ya no se muestra y sólo quedan los
   /// Ajustes del teléfono.
-  static Future<bool> get sePuedePedirUbicacion => _yo._ubicacion.sePuedePreguntar;
+  static Future<bool> get sePuedePedirUbicacion async =>
+      await _yo._ubicacionSiHay?.sePuedePreguntar ?? false;
 
   /// ¿Está concedida?
-  static Future<bool> get tieneUbicacion => _yo._ubicacion.concedido;
+  static Future<bool> get tieneUbicacion async => await _yo._ubicacionSiHay?.concedido ?? false;
 
   /// Pide el permiso de ubicación aproximada.
   ///
@@ -660,10 +678,12 @@ class AkPush {
   /// Qué está corriendo AHORA. **No es lo que el comercio pidió**: si pidió segundo plano y
   /// la aplicación no declaró el permiso, acá dice [ModoDeLectura.alEntrar] y
   /// [porQueNoHayLecturaContinua] dice por qué.
-  static ModoDeLectura get modoDeUbicacion => _yo._ubicacion.modoActivo;
+  static ModoDeLectura get modoDeUbicacion =>
+      _yo._ubicacionSiHay?.modoActivo ?? ModoDeLectura.alEntrar;
 
   /// Lo que el comercio pidió, aunque no se haya podido.
-  static ModoDeLectura get modoDeUbicacionPedido => _yo._ubicacion.modoPedido;
+  static ModoDeLectura get modoDeUbicacionPedido =>
+      _yo._ubicacionSiHay?.modoPedido ?? ModoDeLectura.alEntrar;
 
   /// Por qué el modo pedido no está corriendo. `null` = está corriendo.
   static String? get porQueNoHayLecturaContinua =>
@@ -684,7 +704,8 @@ class AkPush {
   static List<String> get faltaDeclararParaElFondo => _yo._ubicacion.faltaDeclarar;
 
   /// ¿La persona dio el «Permitir siempre»? Es OTRO permiso que el de la zona.
-  static Future<bool> get tieneUbicacionSiempre => _yo._ubicacion.tieneSiempre;
+  static Future<bool> get tieneUbicacionSiempre async =>
+      await _yo._ubicacionSiHay?.tieneSiempre ?? false;
 
   /// CUÁNTAS LECTURAS DEJÓ ESTA SESIÓN, y cuántas de ellas salieron hacia el servicio.
   ///
@@ -692,8 +713,8 @@ class AkPush {
   /// siempre menor o igual: una lectura que llega antes del intervalo se descarta acá y
   /// nunca toca la red.
   static ({int leidas, int enviadas}) get lecturasDeUbicacionDeLaSesion => (
-        leidas: _yo._ubicacion.lecturasDeLaSesion,
-        enviadas: _yo._ubicacion.enviosDeLaSesion,
+        leidas: _yo._ubicacionSiHay?.lecturasDeLaSesion ?? 0,
+        enviadas: _yo._ubicacionSiHay?.enviosDeLaSesion ?? 0,
       );
 
   /// Corta la lectura continua y vuelve al modo de siempre. La aplicación puede llamarla
