@@ -280,14 +280,14 @@ class TextosDeUbicacion {
   const TextosDeUbicacion({
     this.titulo = 'Avisos de tu zona',
     this.cuerpo =
-        'Si nos dejás saber en qué zona estás, te escribimos sólo lo que pasa cerca '
-        'tuyo en vez de mandarte todo.',
+        'Si nos dejas saber en qué zona estás, te escribimos sólo lo que pasa cerca '
+        'de ti en vez de mandarte todo.',
     this.aceptar = 'Compartir mi zona',
     this.ahoraNo = 'Ahora no',
     this.motivos = const [
       'Es la zona, no la dirección exacta',
-      'Sólo mientras usás la aplicación',
-      'Lo cambiás cuando quieras desde los ajustes',
+      'Sólo mientras usas la aplicación',
+      'Lo cambias cuando quieras desde los ajustes',
     ],
   });
 
@@ -393,18 +393,18 @@ class TextosDeSiempre {
   const TextosDeSiempre({
     this.titulo = 'Un paso más: siempre',
     this.cuerpo =
-        'Esta aplicación recolecta datos de ubicación para saber cuánto te movés '
+        'Esta aplicación recolecta datos de ubicación para saber cuánto te mueves '
         'incluso cuando está cerrada o no la estás usando. En la pantalla que sigue, '
-        'elegí «Permitir siempre».',
+        'elige «Permitir siempre».',
     this.aceptar = 'Permitir siempre',
     this.ahoraNo = 'Ahora no',
     this.motivos = const [
       'Es la zona, no la dirección exacta',
       'Vas a ver un aviso fijo mientras esté midiendo',
-      'Lo cortás cuando quieras desde los ajustes',
+      'Lo cortas cuando quieras desde los ajustes',
     ],
     this.avisoTitulo = 'Midiendo tu zona',
-    this.avisoCuerpo = 'Tocá para ver o cortar esto.',
+    this.avisoCuerpo = 'Toca para ver o cortar esto.',
   });
 
   final String titulo;
