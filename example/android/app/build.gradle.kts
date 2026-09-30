@@ -120,3 +120,8 @@ dependencies {
 flutter {
     source = "../.."
 }
+
+// flutter_background_geolocation (sólo la app de ejemplo: la captura de Transistor para D-04).
+// Lo pide su guía de instalación v5: trae sus reglas de proguard y su configuración.
+val backgroundGeolocation = project(":flutter_background_geolocation")
+apply { from("${backgroundGeolocation.projectDir}/background_geolocation.gradle") }

@@ -103,3 +103,35 @@ export 'src/transmision/politica_de_transmision.dart'
         senalesDeMomento,
         momentosQueElBackTodaviaNoTiene,
         senalesDeMomentoDe;
+
+// ── RASTREO — la persona con su aparato, mientras se mueve ───────────────────
+//
+// Es un módulo aparte de la fachada `AkPush` a propósito: mide todo el día en el fondo, con
+// su propia clave, su propia cola y su propio reloj, y una aplicación puede usarlo sin
+// avisos push (y al revés). Ver `lib/src/rastreo/rastreo.dart`.
+//
+// `CapturaDeRastreo` y sus eventos se exportan para que una aplicación pueda enchufar otra
+// captura —la de Transistor, en la app de ejemplo— sin que este paquete dependa de ella.
+export 'src/rastreo/rastreo.dart'
+    show Rastreo, ResultadoDeEnrolamiento, DiagnosticoDeRastreo;
+export 'src/rastreo/configuracion_de_rastreo.dart' show ConfiguracionDeRastreo;
+export 'src/rastreo/cadencia.dart'
+    show FilaDeCadencia, CondicionDeCadencia, SituacionDelAparato, evaluarCadencia;
+export 'src/rastreo/captura.dart'
+    show
+        CapturaDeRastreo,
+        CapturaPropia,
+        TextosDelAvisoDeRastreo,
+        EventoDeCaptura,
+        PuntoCapturado,
+        CambioDeEstado,
+        ProblemaDeCaptura;
+export 'src/rastreo/punto.dart' show PuntoDeRastreo;
+// El detector va exportado para que otra captura (la de Transistor) grabe con el MISMO
+// criterio que la propia: si no, D-04 compararía dos criterios además de dos capturas.
+export 'src/rastreo/detector_de_movimiento.dart'
+    show EstadoDeMovimiento, TipoDeActividad, DetectorDeMovimiento, Lectura, Decision;
+export 'src/rastreo/cola_de_rastreo.dart' show Hueco;
+export 'src/rastreo/emisor_de_lotes.dart' show ResultadoDelEmisor;
+export 'src/rastreo/nativo_de_rastreo.dart'
+    show EnergiaDelAparato, ActividadDelAparato, ClaveDelAparato;

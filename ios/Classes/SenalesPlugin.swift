@@ -46,7 +46,11 @@ public class SenalesPlugin: NSObject, FlutterPlugin {
     let canal = FlutterMethodChannel(name: "hz_collection_sdk/senales",
                                      binaryMessenger: registrar.messenger())
     registrar.addMethodCallDelegate(SenalesPlugin(), channel: canal)
+    // El rastreo vive en su propio archivo y su propio canal; acá sólo se engancha.
+    rastreo = RastreoNativo(mensajero: registrar.messenger())
   }
+
+  private static var rastreo: RastreoNativo?
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {

@@ -47,9 +47,19 @@ dependencies:
   disk_space_plus: ^0.2.3
   geolocator: ^14.0.2
 
+  # ── RASTREO ──────────────────────────────────────────────────────────────────
+  # La cola del rastreo vive en SQLite y no en SharedPreferences: son miles de puntos
+  # que se leen por rango y se borran por lote, y un archivo de preferencias se
+  # reescribe entero en cada punto. Ninguno de los dos declara permisos.
+  sqflite: ^2.3.0
+  # SHA-256 del cuerpo canónico del lote. Puro Dart.
+  crypto: ^3.0.6
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Para probar la cola de SQLite de verdad en la computadora, sin un teléfono.
+  sqflite_common_ffi: ^2.3.0
   flutter_lints: ^6.0.0
 
 flutter:

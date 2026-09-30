@@ -1,0 +1,9 @@
+# Los textos de la pantalla de RASTREO (lib/main_rastreo.dart). Las pantallas viejas del
+# ejemplo todavía escriben sus textos a mano; ésta sigue la regla de la casa
+# (~/git/credit_cx/CLAUDE.md §2): ningún texto visible escrito en el widget.
+arb-dir: lib/l10n
+template-arb-file: rastreo_es.arb
+output-localization-file: textos_de_rastreo.dart
+output-class: TextosDeRastreo
+output-dir: lib/l10n/generado
+nullable-getter: false

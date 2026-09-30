@@ -1,4 +1,4 @@
-// Compilación del plugin nativo. Lo mínimo: no agrega dependencias, no declara permisos.
+// Compilación del plugin nativo. Lo mínimo: no agrega dependencias al APK, no declara permisos.
 group 'com.hazling.collection'
 version '1.0'
 
@@ -26,4 +26,11 @@ android {
     kotlinOptions { jvmTarget = '17' }
     sourceSets { main.java.srcDirs += 'src/main/kotlin' }
     defaultConfig { minSdk 21 }
+}
+
+dependencies {
+    // 🔴 compileOnly: el reconocimiento de actividad del rastreo usa Play Services Location,
+    // que YA va en el APK por geolocator_android (dependencia firme del SDK). No se empaqueta
+    // de nuevo ni se agrega nada: sólo se compila contra ella. Ver RastreoNativo.kt.
+    compileOnly 'com.google.android.gms:play-services-location:21.2.0'
 }

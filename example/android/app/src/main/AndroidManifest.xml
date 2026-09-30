@@ -11,16 +11,31 @@
 
     <!-- Android 13+ pide el permiso en tiempo de ejecución. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <!-- ══ RASTREO (lib/main_rastreo.dart) ══
+         Los declara la APLICACIÓN, nunca el SDK (su manifiesto está vacío). Sin estos cinco,
+         el rastreo se apaga solo y lo dice en el diagnóstico:
+           · FINE — el GPS preciso mientras la persona se mueve;
+           · BACKGROUND + FOREGROUND_SERVICE(+_LOCATION) — seguir grabando con la app en el
+             fondo, con el aviso fijo en la barra;
+           · ACTIVITY_RECOGNITION — que el sistema diga «va en vehículo» sin prender el GPS.
+         🔴 BACKGROUND es nivel 3: revisión manual de Google con video. Ver
+         lib/src/permisologia/catalogo_de_permisos.dart. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
     <application
         android:networkSecurityConfig="@xml/network_security_config"
         android:label="${nombreDeLaApp}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        <!-- La actividad de Flutter, en vez de una propia: así el identificador
-             del paquete se puede cambiar al compilar sin tocar ningún archivo
-             de código. -->
+        <!-- Una actividad propia en un paquete FIJO (com.hazling.collection.ejemplo), nombrada
+             completa: el identificador del paquete se sigue pudiendo cambiar al compilar sin
+             tocar código. Es FlutterActivity más el canal del simulador de recorridos. -->
         <activity
-            android:name="io.flutter.embedding.android.FlutterActivity"
+            android:name="com.hazling.collection.ejemplo.ActividadPrincipal"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""

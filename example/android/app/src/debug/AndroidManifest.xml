@@ -4,4 +4,9 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Sólo en depuración: el botón «simular recorrido» inyecta la ruta por los proveedores
+         de prueba de Android. Hace falta además, una vez:
+           adb shell appops set <paquete> android:mock_location allow -->
+    <uses-permission android:name="android.permission.ACCESS_MOCK_LOCATION"
+        xmlns:tools="http://schemas.android.com/tools" tools:ignore="MockLocation,ProtectedPermissions"/>
 </manifest>

@@ -21,6 +21,8 @@ import android.telephony.TelephonyManager
 import android.view.accessibility.AccessibilityManager
 import android.view.inputmethod.InputMethodManager
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.text.SimpleDateFormat
@@ -72,19 +74,44 @@ import kotlin.math.sqrt
  * sencillamente no aparece en el mapa, y eso es distinto de aparecer en cero — ver la regla
  * de «nulo no es cero» en transformar.dart.
  */
-class SenalesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
+class SenalesPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
 
     private lateinit var canal: MethodChannel
     private lateinit var contexto: Context
+
+    /** El rastreo vive en su propio archivo y su propio canal; acá sólo se engancha. */
+    private var rastreo: RastreoNativo? = null
+    private var enlaceDeActividad: ActivityPluginBinding? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         contexto = binding.applicationContext
         canal = MethodChannel(binding.binaryMessenger, "hz_collection_sdk/senales")
         canal.setMethodCallHandler(this)
+        rastreo = RastreoNativo(contexto, binding.binaryMessenger)
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         canal.setMethodCallHandler(null)
+        rastreo?.soltar()
+        rastreo = null
+    }
+
+    // La actividad sólo hace falta para pedir el permiso de actividad física.
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        enlaceDeActividad = binding
+        rastreo?.actividad = binding.activity
+        rastreo?.let { binding.addRequestPermissionsResultListener(it) }
+    }
+
+    override fun onDetachedFromActivityForConfigChanges() = onDetachedFromActivity()
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) =
+        onAttachedToActivity(binding)
+
+    override fun onDetachedFromActivity() {
+        rastreo?.let { enlaceDeActividad?.removeRequestPermissionsResultListener(it) }
+        rastreo?.actividad = null
+        enlaceDeActividad = null
     }
 
     override fun onMethodCall(call: MethodCall, resultado: MethodChannel.Result) {
