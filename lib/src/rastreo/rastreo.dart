@@ -60,6 +60,7 @@ import 'captura.dart';
 import 'cola_de_rastreo.dart';
 import 'configuracion_de_rastreo.dart';
 import 'punto.dart';
+import 'pulso_por_presencia.dart';
 import 'detector_de_movimiento.dart';
 import 'emisor_de_lotes.dart';
 import 'golpe/detector_de_golpe.dart';
@@ -685,6 +686,7 @@ class Rastreo {
       } else if (!r.aceptado) {
         _anotarProblema('presencia: ${r.codigo ?? 'sin red'}');
       }
+      if (r.aceptado) unawaited(_pulso.alResponder(r));
     } catch (e) {
       // se anota una vez por minuto como mucho: un error que se repite cada 5 s llenaría el diagnóstico
       if (DateTime.now().millisecondsSinceEpoch - _ultimoAvisoDePresencia > 60000) {
@@ -693,6 +695,34 @@ class Rastreo {
       }
     }
   }
+
+  /// PULSO SIN FCM (`pulso_por_presencia.dart`): si la respuesta de la presencia trae `pulso`,
+  /// se toma UNA posición precisa y se responde con `origen: 'pulso'`.
+  late final PulsoPorPresencia _pulso = PulsoPorPresencia(
+    apagado: () => _apagado.apagado || !_config.activo,
+    enviarPresencia: api.enviarPresencia,
+    tomarPosicion: () async {
+      final p = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.best, timeLimit: Duration(seconds: 20)));
+      int bat = -1;
+      try {
+        bat = await Battery().batteryLevel;
+      } catch (_) {}
+      return {
+        'instalacionId': instalacionId,
+        't': p.timestamp.millisecondsSinceEpoch,
+        'lat': p.latitude,
+        'lon': p.longitude,
+        'acc': p.accuracy < 0 ? 0 : p.accuracy,
+        'v': p.speed < 0 ? 0 : p.speed,
+        'h': (p.hasHeading && p.heading >= 0 && p.heading < 360) ? p.heading : PuntoDeRastreo.rumboDesconocido,
+        'estado': captura.estado == EstadoDeMovimiento.rodando ? 'rodando' : 'detenido',
+        'bat': (bat < 0 || bat > 100) ? -1 : bat,
+        if (_medio.vigente != null) 'medio': _medio.vigente,
+      };
+    },
+  );
 
   int _ultimoAvisoDePresencia = 0;
   int _ultimoRastroDePresencia = 0;
@@ -724,6 +754,7 @@ class Rastreo {
       } else if (!r.aceptado) {
         _anotarProblema('presencia: ${r.codigo ?? 'sin red'}');
       }
+      if (r.aceptado) unawaited(_pulso.alResponder(r));
     } catch (_) {}
   }
 
