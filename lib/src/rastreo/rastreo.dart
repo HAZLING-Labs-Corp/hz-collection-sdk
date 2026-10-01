@@ -63,6 +63,8 @@ import 'punto.dart';
 import 'pulso_por_presencia.dart';
 import 'detector_de_movimiento.dart';
 import 'emisor_de_lotes.dart';
+import 'etiquetas/escaner_ble.dart';
+import 'etiquetas/vigia_de_etiquetas.dart';
 import 'golpe/detector_de_golpe.dart';
 import 'golpe/sucesos_del_aparato.dart';
 import 'golpe/vigia_de_golpe.dart';
@@ -87,8 +89,10 @@ class Rastreo {
     required this.paquete,
     required SharedPreferences prefs,
     String firma = '',
+    EscanerBle? escanerBle,
   })  : _prefs = prefs,
-        _firma = firma {
+        _firma = firma,
+        _escanerBle = escanerBle {
     final guardada = _prefs.getString(_claveConfig);
     if (guardada != null) {
       try {
@@ -116,6 +120,15 @@ class Rastreo {
   final String instalacionId;
   final String paquete;
   final SharedPreferences _prefs;
+
+  /// Etiquetas BLE: el escáner (el real si no se pasa otro) y el vigía que abre ventanas al rodar.
+  final EscanerBle? _escanerBle;
+  late final VigiaDeEtiquetas etiquetas = VigiaDeEtiquetas(
+    escaner: _escanerBle ?? EscanerReactivo(),
+    configuracion: () => _config.etiquetas,
+    rodando: () => captura.estado == EstadoDeMovimiento.rodando,
+    alProblema: _anotarProblema,
+  );
 
   /// Con qué se abrió (llave, url, ingesta, captura, cliente): [abrir] con lo mismo devuelve la
   /// instancia viva en vez de armar otra.
@@ -266,6 +279,7 @@ class Rastreo {
     CapturaDeRastreo? captura,
     http.Client? cliente,
     ColaDeRastreo? cola,
+    EscanerBle? escanerBle,
   }) async {
     // LA MISMA INSTANCIA SI YA CORRE CON LO MISMO: volver a entrar a una pantalla no tiene que
     // rearmar la captura. Rearmarla en pleno viaje la arrancaba en quieto (≈1 min sin puntos
@@ -285,6 +299,7 @@ class Rastreo {
       paquete: paquete,
       prefs: prefs,
       firma: firma,
+      escanerBle: escanerBle,
     );
   }
 
@@ -470,6 +485,7 @@ class Rastreo {
       loteSeg: () => captura.cadencia.loteSeg ?? FilaDeCadencia.respaldo.loteSeg!,
       registrarClave: _registrarClave,
       medio: _medio.paraLote,
+      avistamientos: etiquetas.tomarHasta,
     );
     _emisorDeSucesos ??= EmisorDeSucesos(
       api: api,
@@ -500,6 +516,7 @@ class Rastreo {
     });
     _relecturaDeConfig ??=
         Timer.periodic(const Duration(hours: 1), (_) => unawaited(_aplicarConfiguracion()));
+    etiquetas.iniciar(); // no escanea si no hay etiquetas o no se rueda
 
     final motivo = await _aplicarConfiguracion(releer: false);
     unawaited(_intentarEnviar());
@@ -567,6 +584,7 @@ class Rastreo {
     _relevo = (captura.estado, DateTime.now().millisecondsSinceEpoch);
     await captura.detener();
     await _vigia?.detener();
+    await etiquetas.detener();
     _reloj?.cancel();
     _relojDePresencia?.cancel();
     _relojDePresencia = null;

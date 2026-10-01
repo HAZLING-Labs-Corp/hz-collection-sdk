@@ -52,6 +52,7 @@ import 'dart:math' as math;
 import 'apagado_del_servidor.dart';
 import 'api_de_rastreo.dart';
 import 'cola_de_rastreo.dart';
+import 'etiquetas/etiquetas_ble.dart';
 import 'configuracion_de_rastreo.dart';
 import 'lote.dart';
 import 'medidor_de_hilo.dart';
@@ -110,6 +111,7 @@ class EmisorDeLotes {
     required this.loteSeg,
     required this.registrarClave,
     this.medio,
+    this.avistamientos,
     DateTime Function()? ahora,
     math.Random? azar,
     this.ventanaDeRecuperacion = const Duration(seconds: 15),
@@ -133,6 +135,9 @@ class EmisorDeLotes {
   /// se arma ahora, según la hora de su punto más viejo. Un lote ya armado no cambia (sus
   /// bytes están firmados).
   final String? Function(int? tMasViejo)? medio;
+
+  /// Etiquetas BLE: lo oído hasta el punto más nuevo del lote que se arma (y se saca de la espera).
+  final List<Avistamiento> Function(int tMasNuevo)? avistamientos;
 
   /// Los envíos del último minuto. La ingesta acepta a lo sumo 6 lotes por minuto por
   /// instalación (RESUMEN-B §8); el SDK se queda en [maximoPorMinuto] para no gastar un 429.
@@ -359,6 +364,7 @@ class EmisorDeLotes {
       puntos: pts,
       firmador: firmador,
       medio: medio?.call(masViejo),
+      avistamientos: avistamientos?.call(gnss!) ?? const [],
     );
     await cola.guardarLote(l, [for (final p in puntos) p.id], _ahora().millisecondsSinceEpoch);
     return l.loteId;

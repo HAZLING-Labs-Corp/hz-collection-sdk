@@ -435,6 +435,24 @@ Sin eso, los avisos que llegan con la app cerrada caen en un canal que no existe
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 ```
 
+**4 · Etiquetas Bluetooth del vehículo (sólo si el comercio las usa).** Si a la persona le
+registraron una etiqueta BLE (iBeacon, Eddystone-UID o AltBeacon), el rastreo la escucha en
+ventanas cortas (8 s cada 30 s) **sólo mientras rueda**, y manda lo que oyó dentro del lote
+firmado. El SDK nunca conecta: no hace falta `BLUETOOTH_CONNECT`.
+
+```xml
+<!-- Android 12+: SIN neverForLocation. Con esa marca Android FILTRA los beacons del escaneo. -->
+<uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+    tools:remove="android:usesPermissionFlags" />
+<!-- Android 11 y anteriores -->
+<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+```
+
+`BLUETOOTH_SCAN` es un permiso de tiempo de ejecución (grupo «Dispositivos cercanos»): pedilo en
+tu flujo de permisos. Sin él, el rastreo sigue igual y sólo no hay avistamientos. En iPhone, el
+sistema no entrega los anuncios iBeacon a CoreBluetooth: ahí se oyen Eddystone-UID y AltBeacon.
+
 ### iOS
 
 Desde el 2026-09-01 el SDK **tiene lado nativo de iOS** (`ios/Classes/SenalesPlugin.swift`) y

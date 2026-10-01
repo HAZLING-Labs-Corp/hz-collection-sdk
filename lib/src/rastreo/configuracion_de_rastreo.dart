@@ -23,6 +23,7 @@ library;
 
 import '../politica.dart';
 import 'cadencia.dart';
+import 'etiquetas/etiquetas_ble.dart';
 import 'golpe/detector_de_golpe.dart';
 
 class ConfiguracionDeRastreo {
@@ -40,7 +41,11 @@ class ConfiguracionDeRastreo {
     this.presenciaQuietoSeg = 30,
     this.medio,
     this.golpe = UmbralesDeGolpe.porOmision,
+    this.etiquetas = ConfiguracionDeEtiquetas.ninguna,
   });
+
+  /// Etiquetas BLE (01-10-2026): las de la persona y cómo escucharlas. Sin bloque: no se escanea.
+  final ConfiguracionDeEtiquetas etiquetas;
 
   /// Si hay algo que medir. Sin perfil vigente, el servicio manda `false`.
   final bool activo;
@@ -177,6 +182,7 @@ class ConfiguracionDeRastreo {
           ? (((j['despertar'] as Map)['aceleracion'] as num).toDouble()).clamp(0.3, 10.0)
           : 1.0,
       golpe: UmbralesDeGolpe.fromJson(j['golpe']),
+      etiquetas: ConfiguracionDeEtiquetas.fromJson(j['etiquetas']),
     );
   }
 
@@ -193,6 +199,7 @@ class ConfiguracionDeRastreo {
         'presenciaQuietoSeg': presenciaQuietoSeg,
         'medio': medio,
         'golpe': golpe.toJson(),
+        if (etiquetas.hayQueEscuchar) 'etiquetas': etiquetas.toJson(),
         'cadencia': [for (final f in cadencia) {...f.toJson(), 'si': _siCrudo(f.si)}],
       };
 

@@ -23,6 +23,7 @@ import 'dart:math' as math;
 
 import 'canonico.dart';
 import 'medidor_de_hilo.dart';
+import 'etiquetas/etiquetas_ble.dart';
 import 'punto.dart';
 
 /// Los dos relojes del aparato además del de la pared (PM-024 §11.6).
@@ -89,6 +90,7 @@ Map<String, dynamic> cuerpoSinFirmar({
   required RelojDelLote reloj,
   required List<PuntoDeRastreo> puntos,
   String? medio,
+  List<Avistamiento> avistamientos = const [],
 }) =>
     {
       'instalacionId': instalacionId,
@@ -101,6 +103,8 @@ Map<String, dynamic> cuerpoSinFirmar({
       // tramo 3.2 (opcional): el medio declarado para el viaje. Entra al hash como cualquier
       // campo; sin declarar, la clave NO va (un lote viejo sigue siendo byte a byte el mismo).
       if (medio != null) 'medio': medio,
+      // etiquetas BLE (opcional): lo que se oyó; sin nada oído la clave NO va (mismo criterio)
+      if (avistamientos.isNotEmpty) 'avistamientos': [for (final a in avistamientos) a.toJson()],
     };
 
 Future<LoteArmado> armarLote({
@@ -111,6 +115,7 @@ Future<LoteArmado> armarLote({
   required List<PuntoDeRastreo> puntos,
   required FirmadorDeLotes firmador,
   String? medio,
+  List<Avistamiento> avistamientos = const [],
 }) async {
   if (puntos.isEmpty) {
     throw ArgumentError('Un lote sin puntos no se arma: no prueba nada y gasta un request.');
@@ -127,6 +132,7 @@ Future<LoteArmado> armarLote({
       reloj: reloj,
       puntos: puntos,
       medio: medio,
+      avistamientos: avistamientos,
     );
     final c = jsonCanonico(m);
     return (m, c, sha256Hex(c));
