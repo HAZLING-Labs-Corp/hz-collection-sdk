@@ -148,6 +148,9 @@ class DetectorDeMovimiento {
   int tramo = 0;
 
   Lectura? _ancla; // centro de la zona de reposo (en QUIETO)
+
+  /// Dónde estaba el aparato en reposo: es el verdadero INICIO del viaje que está empezando.
+  Lectura? get ancla => _ancla;
   Lectura? _anterior; // la última lectura precisa
   Lectura? _reposo; // en RODANDO: dónde empezó a no moverse
   int _confirmaciones = 0;

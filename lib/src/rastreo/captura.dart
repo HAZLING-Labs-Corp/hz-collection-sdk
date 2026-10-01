@@ -352,7 +352,50 @@ class CapturaPropia implements CapturaDeRastreo {
     await _aplicar(dec);
   }
 
+  /// EL INICIO DEL VIAJE ES DONDE ESTABA PARADO, no donde el GPS preciso logra el primer punto: el
+  /// GPS tarda en despertar y, a 20-30 km/h, ya se perdieron 60-100 m (medido con una caminata real:
+  /// la bandera de inicio quedó ~200 m adelante). Al pasar de quieto a «confirmando» se graba como
+  /// primer punto la posición de reposo (el ancla del detector) o, si no hay, la última conocida.
+  Future<void> _puntoDeInicio(DateTime desde) async {
+    final d = _detector;
+    if (d == null) return;
+    try {
+      final a = d.ancla;
+      double lat, lon, acc;
+      if (a != null) {
+        lat = a.lat;
+        lon = a.lon;
+        acc = a.acc;
+      } else {
+        final p = await Geolocator.getLastKnownPosition();
+        if (p == null) return;
+        lat = p.latitude;
+        lon = p.longitude;
+        acc = p.accuracy;
+      }
+      // un segundo antes del despertar: el orden de los puntos del tramo no se rompe
+      final t = desde.millisecondsSinceEpoch - 1000;
+      _eventos.add(PuntoCapturado(
+        PuntoDeRastreo(
+          t: t,
+          lat: lat,
+          lon: lon,
+          acc: acc,
+          v: 0,
+          h: PuntoDeRastreo.rumboDesconocido,
+          alt: PuntoDeRastreo.altitudDesconocida,
+          mock: false,
+          bat: await _bateriaAhora(),
+        ),
+        d.tramo,
+      ));
+    } catch (_) {}
+  }
+
   Future<void> _aplicar(Decision dec) async {
+    if (dec.cambio && dec.estado == EstadoDeMovimiento.confirmando) {
+      unawaited(_puntoDeInicio(DateTime.now()));
+    }
     if (dec.cambio) {
       _eventos.add(CambioDeEstado(dec.estado, dec.motivo, vaciar: dec.vaciar));
     } else if (dec.cambioDeFila) {
