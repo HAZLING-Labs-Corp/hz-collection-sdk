@@ -20,7 +20,10 @@ import 'package:http/http.dart' as http;
 import '../api_client.dart';
 
 class RespuestaDeIngesta {
-  const RespuestaDeIngesta({this.codigo, this.cuerpo, this.reintentarEn, this.error});
+  const RespuestaDeIngesta({this.codigo, this.cuerpo, this.reintentarEn, this.error, this.cuerpoCompleto});
+
+  /// El cuerpo entero, sin recortar: para leer JSON (el recorte de [cuerpo] lo rompería).
+  final String? cuerpoCompleto;
 
   /// El código HTTP, o `null` si no hubo respuesta (sin red, DNS, timeout).
   final int? codigo;
@@ -193,7 +196,6 @@ class _Respuesta extends RespuestaDeIngesta {
     super.cuerpo,
     super.reintentarEn,
     super.error,
-    this.cuerpoCompleto,
+    super.cuerpoCompleto,
   });
-  final String? cuerpoCompleto;
 }

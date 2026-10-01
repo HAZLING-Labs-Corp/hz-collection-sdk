@@ -25,9 +25,10 @@ class PulsoPedido {
 
   /// Lee `pulso` del cuerpo de una respuesta 2xx. `null` si no vino o viene mal formado.
   static PulsoPedido? deRespuesta(RespuestaDeIngesta r) {
-    if (!r.aceptado || r.cuerpo == null) return null;
+    final texto = r.cuerpoCompleto ?? r.cuerpo;
+    if (!r.aceptado || texto == null) return null;
     try {
-      final j = jsonDecode(r.cuerpo!);
+      final j = jsonDecode(texto);
       final p = j is Map ? j['pulso'] : null;
       if (p is! Map) return null;
       final id = p['id'];

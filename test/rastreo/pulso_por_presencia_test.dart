@@ -121,4 +121,13 @@ void main() {
     expect(b.posts, hasLength(1));
     expect(b.pulso.respondidos, 0);
   });
+
+  test('el pulso se lee del cuerpo entero aunque pase de 500 caracteres', () async {
+    final b = _Banco();
+    final largo = '{"ok":true,"relleno":"${'x' * 800}","pulso":{"id":"p-largo","hasta":${_ahora + 60000}}}';
+    final r = RespuestaDeIngesta(
+        codigo: 202, cuerpo: '${largo.substring(0, 500)}…', cuerpoCompleto: largo);
+    expect(await b.pulso.alResponder(r), isTrue);
+    expect(b.posts.single['pulsoId'], 'p-largo');
+  });
 }
