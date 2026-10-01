@@ -819,6 +819,108 @@ abstract class TextosDeRastreo {
   /// In es, this message translates to:
   /// **'Una vuelta por las calles reales desde donde está el teléfono, del medio y la duración que elijas: velocidades creíbles, semáforos, y parado al salir y al volver.'**
   String get simRealExplicacion;
+
+  /// No description provided for @medioDeclarado.
+  ///
+  /// In es, this message translates to:
+  /// **'Medio declarado'**
+  String get medioDeclarado;
+
+  /// No description provided for @medioDelPerfil.
+  ///
+  /// In es, this message translates to:
+  /// **'El del perfil'**
+  String get medioDelPerfil;
+
+  /// No description provided for @simularGolpe.
+  ///
+  /// In es, this message translates to:
+  /// **'Simular golpe'**
+  String get simularGolpe;
+
+  /// No description provided for @golpeExplicacion.
+  ///
+  /// In es, this message translates to:
+  /// **'Pasa un golpe sintético (pico de 1,5 × el umbral y quietud) por el mismo detector, y lo manda a Collection como un suceso real.'**
+  String get golpeExplicacion;
+
+  /// No description provided for @golpeNoConcluyo.
+  ///
+  /// In es, this message translates to:
+  /// **'El detector no concluyó el golpe simulado.'**
+  String get golpeNoConcluyo;
+
+  /// No description provided for @estasBienTitulo.
+  ///
+  /// In es, this message translates to:
+  /// **'¿Estás bien?'**
+  String get estasBienTitulo;
+
+  /// No description provided for @estasBienCuerpo.
+  ///
+  /// In es, this message translates to:
+  /// **'El teléfono notó un golpe fuerte y después quietud. Si necesitas ayuda, avisa a alguien cercano.'**
+  String get estasBienCuerpo;
+
+  /// No description provided for @estasBienSimulado.
+  ///
+  /// In es, this message translates to:
+  /// **'Golpe simulado · confianza {confianza}'**
+  String estasBienSimulado(String confianza);
+
+  /// No description provided for @estasBienConfianza.
+  ///
+  /// In es, this message translates to:
+  /// **'Confianza {confianza}'**
+  String estasBienConfianza(String confianza);
+
+  /// No description provided for @estoyBien.
+  ///
+  /// In es, this message translates to:
+  /// **'Estoy bien'**
+  String get estoyBien;
+
+  /// No description provided for @ultimoSuceso.
+  ///
+  /// In es, this message translates to:
+  /// **'Último suceso'**
+  String get ultimoSuceso;
+
+  /// No description provided for @sucesosEnCola.
+  ///
+  /// In es, this message translates to:
+  /// **'Sucesos en cola'**
+  String get sucesosEnCola;
+
+  /// No description provided for @sinGpsAhora.
+  ///
+  /// In es, this message translates to:
+  /// **'Sin GPS'**
+  String get sinGpsAhora;
+
+  /// No description provided for @motivoPermisoRevocado.
+  ///
+  /// In es, this message translates to:
+  /// **'permiso revocado'**
+  String get motivoPermisoRevocado;
+
+  /// No description provided for @motivoGpsApagado.
+  ///
+  /// In es, this message translates to:
+  /// **'GPS apagado'**
+  String get motivoGpsApagado;
+
+  /// No description provided for @motivoSinFix.
+  ///
+  /// In es, this message translates to:
+  /// **'sin señal (sin fix)'**
+  String get motivoSinFix;
+
+  /// No description provided for @huecoConMotivo.
+  ///
+  /// In es, this message translates to:
+  /// **'{hueco} · {motivo}'**
+  String huecoConMotivo(String hueco, String motivo);
 }
 
 class _TextosDeRastreoDelegate extends LocalizationsDelegate<TextosDeRastreo> {

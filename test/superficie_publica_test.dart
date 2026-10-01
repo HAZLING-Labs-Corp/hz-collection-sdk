@@ -114,4 +114,18 @@ void main() {
       AccionDePush.viewed,
     );
   });
+
+  test('el golpe, el suceso y el medio se nombran desde la puerta pública', () {
+    final s = SucesoDelAparato(
+        instalacionId: 'inst-12345678', tipo: TipoDeSuceso.golpeQuietud, t: 1727700000000, confianza: 0.9);
+    expect(s.id, hasLength(64));
+    expect(UmbralesDeGolpe.fromJson(null).gPico, 4);
+    expect(MotivoSinGps.values, hasLength(3));
+    expect(Rastreo.mediosValidos, containsAll(['pie', 'dosRuedas', 'carro']));
+    // las firmas que promete la fachada
+    Stream<SucesoDelAparato> sucesos(Rastreo r) => r.sucesos;
+    void declarar(Rastreo r, String? m) => r.declararMedio(m);
+    Future<SucesoDelAparato?> simular(Rastreo r) => r.simularGolpe();
+    expect([sucesos, declarar, simular], hasLength(3));
+  });
 }

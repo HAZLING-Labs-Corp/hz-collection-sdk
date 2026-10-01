@@ -158,5 +158,26 @@
   "simMinutos": "{n} min",
   "@simMinutos": { "placeholders": { "n": { "type": "int" } } },
   "simularRecorridoReal": "Simular recorrido",
-  "simRealExplicacion": "Una vuelta por las calles reales desde donde está el teléfono, del medio y la duración que elijas: velocidades creíbles, semáforos, y parado al salir y al volver."
+  "simRealExplicacion": "Una vuelta por las calles reales desde donde está el teléfono, del medio y la duración que elijas: velocidades creíbles, semáforos, y parado al salir y al volver.",
+
+  "medioDeclarado": "Medio declarado",
+  "medioDelPerfil": "El del perfil",
+  "simularGolpe": "Simular golpe",
+  "golpeExplicacion": "Pasa un golpe sintético (pico de 1,5 × el umbral y quietud) por el mismo detector, y lo manda a Collection como un suceso real.",
+  "golpeNoConcluyo": "El detector no concluyó el golpe simulado.",
+  "estasBienTitulo": "¿Estás bien?",
+  "estasBienCuerpo": "El teléfono notó un golpe fuerte y después quietud. Si necesitas ayuda, avisa a alguien cercano.",
+  "estasBienSimulado": "Golpe simulado · confianza {confianza}",
+  "@estasBienSimulado": {"placeholders": {"confianza": {"type": "String"}}},
+  "estasBienConfianza": "Confianza {confianza}",
+  "@estasBienConfianza": {"placeholders": {"confianza": {"type": "String"}}},
+  "estoyBien": "Estoy bien",
+  "ultimoSuceso": "Último suceso",
+  "sucesosEnCola": "Sucesos en cola",
+  "sinGpsAhora": "Sin GPS",
+  "motivoPermisoRevocado": "permiso revocado",
+  "motivoGpsApagado": "GPS apagado",
+  "motivoSinFix": "sin señal (sin fix)",
+  "huecoConMotivo": "{hueco} · {motivo}",
+  "@huecoConMotivo": {"placeholders": {"hueco": {"type": "String"}, "motivo": {"type": "String"}}}
 }

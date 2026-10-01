@@ -54,6 +54,7 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
   HistorialDeRecorrido? _historial;
   DiagnosticoDeRastreo? _diag;
   StreamSubscription<void>? _cambios;
+  StreamSubscription<SucesoDelAparato>? _sucesos;
   Timer? _refresco;
   String _captura = 'propia';
   String? _aviso;
@@ -74,6 +75,7 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
   @override
   void dispose() {
     _cambios?.cancel();
+    _sucesos?.cancel();
     _refresco?.cancel();
     super.dispose();
   }
@@ -97,6 +99,7 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
   Future<void> _armar() async {
     final anterior = _rastreo;
     await _cambios?.cancel();
+    await _sucesos?.cancel();
     if (anterior != null) await anterior.detener();
     final r = await Rastreo.abrir(
       llave: widget.llave,
@@ -108,6 +111,9 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
     _rastreo = r;
     _historial?.escuchar(r.captura);
     _cambios = r.cambios.listen((_) => unawaited(_refrescar()));
+    // Tramo 3.3: un golpe (de verdad o simulado) pregunta «¿estás bien?». El suceso ya salió
+    // hacia Collection: la app sólo pregunta.
+    _sucesos = r.sucesos.listen(_estasBien);
     // Si ya estaba enrolado, arranca solo: es lo que hace una app de verdad en cada
     // arranque. La primera vez hay que tocar «Enrolar».
     if (r.sujetoId != null) {
@@ -312,6 +318,36 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
       });
 
   MedioDePrueba _simMedio = MedioDePrueba.moto;
+
+  /// El medio de la simulación, en el vocabulario del contrato (`Rastreo.declararMedio`).
+  static String _medioDe(MedioDePrueba m) =>
+      switch (m) { MedioDePrueba.aPie => 'pie', MedioDePrueba.moto => 'dosRuedas', MedioDePrueba.carro => 'carro' };
+
+  void _elegirMedio(MedioDePrueba m) {
+    setState(() => _simMedio = m);
+    _rastreo?.declararMedio(_medioDe(m));
+  }
+
+  Future<void> _simularGolpe() => _hacer(() async {
+        final s = await _rastreo?.simularGolpe();
+        if (s == null && mounted) setState(() => _aviso = t.golpeNoConcluyo);
+      });
+
+  Future<void> _estasBien(SucesoDelAparato s) async {
+    if (!mounted) return;
+    final txt = t;
+    final confianza = s.confianza.toStringAsFixed(2);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => AlertDialog(
+        title: Text(txt.estasBienTitulo),
+        content: Text('${txt.estasBienCuerpo}\n\n'
+            '${s.simulado ? txt.estasBienSimulado(confianza) : txt.estasBienConfianza(confianza)}'),
+        actions: [FilledButton(onPressed: () => Navigator.pop(c), child: Text(txt.estoyBien))],
+      ),
+    );
+  }
   int _simMinutos = 10;
 
   Future<void> _simularPorCalles() => _hacer(() async {
@@ -330,6 +366,8 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
           setState(() => _aviso = txt.caminataSinRuta);
           return;
         }
+        // el medio elegido se DECLARA para este viaje (no sólo cambia el dibujo)
+        _rastreo?.declararMedio(_medioDe(_simMedio));
         final no = await Simulador.iniciar(ruta);
         if (no != null) setState(() => _aviso = no);
       });
@@ -473,14 +511,25 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
 
   Widget _huecos(DiagnosticoDeRastreo d) => _Seccion(
         titulo: t.seccionHuecos,
-        filas: d.huecos.isEmpty
-            ? [_Fila(t.sinHuecos, '', bien: true)]
-            : [
-                for (final h in d.huecos)
-                  _Fila(t.hueco(_horaSeg(h.desde), _horaSeg(h.hasta), h.duracion.inSeconds), '',
-                      bien: false),
-              ],
+        filas: [
+          if (d.motivoSinGps != null) _Fila(t.sinGpsAhora, _motivo(d.motivoSinGps!), bien: false),
+          if (d.huecosConMotivo.isEmpty)
+            _Fila(t.sinHuecos, '', bien: true)
+          else
+            for (final (:hueco, :motivo) in d.huecosConMotivo)
+              _Fila(
+                  t.huecoConMotivo(
+                      t.hueco(_horaSeg(hueco.desde), _horaSeg(hueco.hasta), hueco.duracion.inSeconds), _motivo(motivo)),
+                  '',
+                  bien: false),
+        ],
       );
+
+  String _motivo(MotivoSinGps m) => switch (m) {
+        MotivoSinGps.permisoRevocado => t.motivoPermisoRevocado,
+        MotivoSinGps.gpsApagado => t.motivoGpsApagado,
+        MotivoSinGps.sinFix => t.motivoSinFix,
+      };
 
   Widget _problemas(DiagnosticoDeRastreo d) => _Seccion(
         titulo: t.seccionProblemas,
@@ -497,6 +546,16 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
       filas: [
         _Fila(t.simRealExplicacion, '', largo: true),
         if (corriendo) _Fila(t.simulando(s.indice, s.total), ''),
+        _Fila(t.medioDeclarado, _diag?.medioDeclarado ?? t.medioDelPerfil),
+        _Fila(t.golpeExplicacion, '', largo: true),
+        _Fila(
+            t.ultimoSuceso,
+            switch (_diag?.ultimoSuceso) {
+              null => t.sinDato,
+              final u => '${_horaSeg(u.t)} · ${u.tipo} · ${t.estasBienConfianza(u.confianza.toStringAsFixed(2))}',
+            },
+            largo: true),
+        _Fila(t.sucesosEnCola, '${_diag?.sucesosPendientes ?? 0}', bien: (_diag?.sucesosPendientes ?? 0) == 0),
       ],
       acciones: [
         SegmentedButton<MedioDePrueba>(
@@ -506,7 +565,7 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
             ButtonSegment(value: MedioDePrueba.carro, icon: const Icon(Icons.directions_car), label: Text(t.simMedioCarro)),
           ],
           selected: {_simMedio},
-          onSelectionChanged: corriendo ? null : (v) => setState(() => _simMedio = v.first),
+          onSelectionChanged: corriendo ? null : (v) => _elegirMedio(v.first),
         ),
         SegmentedButton<int>(
           segments: [for (final n in const [5, 10, 20]) ButtonSegment(value: n, label: Text(t.simMinutos(n)))],
@@ -522,6 +581,11 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
           onPressed: _ocupado || corriendo ? null : _simular,
           icon: const Icon(Icons.route),
           label: Text(t.simular),
+        ),
+        OutlinedButton.icon(
+          onPressed: _ocupado ? null : _simularGolpe,
+          icon: const Icon(Icons.car_crash),
+          label: Text(t.simularGolpe),
         ),
       ],
     );

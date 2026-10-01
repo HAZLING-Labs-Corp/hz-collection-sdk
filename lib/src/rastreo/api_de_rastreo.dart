@@ -2,6 +2,7 @@
 ///
 ///   · `POST /api/v1/rastreo/claves`   — una vez, al enrolar (y de nuevo si un 401 lo pide).
 ///   · `POST /api/v1/rastreo/lotes`    — cada ~5 min o 40 puntos mientras se mueve.
+///   · `POST /api/v1/rastreo/sucesos`  — en el acto, cuando el aparato concluye un golpe.
 ///   · `GET  /api/v1/configuracion`    — al arrancar y cada hora, sólo el bloque `rastreo`.
 ///
 /// ══ 🔴 NO TIRA EXCEPCIONES AL ENVIAR UN LOTE ══
@@ -108,6 +109,14 @@ class ApiDeRastreo {
   /// una presencia vieja no sirve). Devuelve el resultado sólo para el diagnóstico.
   Future<RespuestaDeIngesta> enviarPresencia(Map<String, dynamic> cuerpo) => _mandar(() => _cliente.post(
         Uri.parse('$baseIngesta/api/v1/rastreo/presencia'),
+        headers: _cabeceras,
+        body: jsonEncode(cuerpo),
+      ));
+
+  /// SUCESO URGENTE (§4.4): `POST /api/v1/rastreo/sucesos`, con la misma llave que la presencia.
+  /// No tira excepciones: el reintento lo decide `EmisorDeSucesos` con el código.
+  Future<RespuestaDeIngesta> enviarSuceso(Map<String, dynamic> cuerpo) => _mandar(() => _cliente.post(
+        Uri.parse('$baseIngesta/api/v1/rastreo/sucesos'),
         headers: _cabeceras,
         body: jsonEncode(cuerpo),
       ));

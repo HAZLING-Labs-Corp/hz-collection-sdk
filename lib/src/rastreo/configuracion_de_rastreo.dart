@@ -23,6 +23,7 @@ library;
 
 import '../politica.dart';
 import 'cadencia.dart';
+import 'golpe/detector_de_golpe.dart';
 
 class ConfiguracionDeRastreo {
   const ConfiguracionDeRastreo({
@@ -38,6 +39,7 @@ class ConfiguracionDeRastreo {
     this.despertarAceleracion = 1.0,
     this.presenciaQuietoSeg = 30,
     this.medio,
+    this.golpe = UmbralesDeGolpe.porOmision,
   });
 
   /// Si hay algo que medir. Sin perfil vigente, el servicio manda `false`.
@@ -81,6 +83,10 @@ class ConfiguracionDeRastreo {
 
   /// CL-41 · el medio que mide el perfil (`pie`, `bici`, `dosRuedas`, `carro`, `bus`), para dibujar al aparato.
   final String? medio;
+
+  /// Tramo 3.3 · los umbrales del detector de golpe (`golpe: { g, quietoSeg }`). Si el bloque
+  /// no los trae, 4 g y 60 s, con piso y techo (ver [UmbralesDeGolpe]).
+  final UmbralesDeGolpe golpe;
 
   static const pisoDespertarSeg = 1;
   static const techoDespertarSeg = 60;
@@ -170,6 +176,7 @@ class ConfiguracionDeRastreo {
       despertarAceleracion: j['despertar'] is Map && (j['despertar'] as Map)['aceleracion'] is num
           ? (((j['despertar'] as Map)['aceleracion'] as num).toDouble()).clamp(0.3, 10.0)
           : 1.0,
+      golpe: UmbralesDeGolpe.fromJson(j['golpe']),
     );
   }
 
@@ -185,6 +192,7 @@ class ConfiguracionDeRastreo {
         'despertar': {'seg': despertarSeg, 'aceleracion': despertarAceleracion},
         'presenciaQuietoSeg': presenciaQuietoSeg,
         'medio': medio,
+        'golpe': golpe.toJson(),
         'cadencia': [for (final f in cadencia) {...f.toJson(), 'si': _siCrudo(f.si)}],
       };
 

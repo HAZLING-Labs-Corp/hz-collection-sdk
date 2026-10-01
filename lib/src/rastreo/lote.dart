@@ -3,7 +3,7 @@
 /// ```
 /// { instalacionId, loteId (uuid), claveId, alg: "ES256", hashAnterior, hash, firma,
 ///   reloj: { mono, arranques, gnss },
-///   puntos: [ { t, lat, lon, acc, v, h, alt, mock, bat } ] }
+///   puntos: [ { t, lat, lon, acc, v, h, alt, mock, bat } ], medio? }
 /// ```
 ///
 /// `hash` = SHA-256 (hex) del JSON canónico del cuerpo SIN `hash` ni `firma`.
@@ -88,6 +88,7 @@ Map<String, dynamic> cuerpoSinFirmar({
   required String hashAnterior,
   required RelojDelLote reloj,
   required List<PuntoDeRastreo> puntos,
+  String? medio,
 }) =>
     {
       'instalacionId': instalacionId,
@@ -97,6 +98,9 @@ Map<String, dynamic> cuerpoSinFirmar({
       'hashAnterior': hashAnterior,
       'reloj': reloj.toJson(),
       'puntos': [for (final p in puntos) p.toJson()],
+      // tramo 3.2 (opcional): el medio declarado para el viaje. Entra al hash como cualquier
+      // campo; sin declarar, la clave NO va (un lote viejo sigue siendo byte a byte el mismo).
+      if (medio != null) 'medio': medio,
     };
 
 Future<LoteArmado> armarLote({
@@ -106,6 +110,7 @@ Future<LoteArmado> armarLote({
   required RelojDelLote reloj,
   required List<PuntoDeRastreo> puntos,
   required FirmadorDeLotes firmador,
+  String? medio,
 }) async {
   if (puntos.isEmpty) {
     throw ArgumentError('Un lote sin puntos no se arma: no prueba nada y gasta un request.');
@@ -121,6 +126,7 @@ Future<LoteArmado> armarLote({
       hashAnterior: hashAnterior,
       reloj: reloj,
       puntos: puntos,
+      medio: medio,
     );
     final c = jsonCanonico(m);
     return (m, c, sha256Hex(c));

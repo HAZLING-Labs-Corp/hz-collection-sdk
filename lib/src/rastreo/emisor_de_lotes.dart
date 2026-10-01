@@ -106,6 +106,7 @@ class EmisorDeLotes {
     required this.configuracion,
     required this.loteSeg,
     required this.registrarClave,
+    this.medio,
     DateTime Function()? ahora,
     math.Random? azar,
     this.ventanaDeRecuperacion = const Duration(seconds: 15),
@@ -124,6 +125,10 @@ class EmisorDeLotes {
 
   /// Vuelve a registrar la pública. Devuelve si la ingesta la aceptó.
   final Future<bool> Function() registrarClave;
+
+  /// El medio declarado para el viaje (`Rastreo.declararMedio`), o `null`: va en el lote que
+  /// se arma ahora. Un lote ya armado no cambia (sus bytes están firmados).
+  final String? Function()? medio;
 
   /// Los envíos del último minuto. La ingesta acepta a lo sumo 6 lotes por minuto por
   /// instalación (RESUMEN-B §8); el SDK se queda en [maximoPorMinuto] para no gastar un 429.
@@ -322,6 +327,7 @@ class EmisorDeLotes {
       reloj: await reloj(gnss),
       puntos: pts,
       firmador: firmador,
+      medio: medio?.call(),
     );
     await cola.guardarLote(l, [for (final p in puntos) p.id], _ahora().millisecondsSinceEpoch);
     return l.loteId;

@@ -21,9 +21,17 @@
 ///
 /// ══ LO QUE NO HACE (y es de otras rebanadas) ══
 ///
-/// Presencia, latidos, sucesos urgentes, «¿estás bien?», SMS. La tabla de cadencia trae sus
-/// números (`presenciaSeg`, `latidoMin`) y el bloque trae `golpe`: se leen y se muestran,
-/// pero nada los usa todavía.
+/// Latidos y SMS. La tabla de cadencia trae `latidoMin`: se lee y se muestra.
+///
+/// ══ TRAMO 3.3 · GOLPE, SUCESOS Y MEDIO ══
+///
+///  · **Golpe**: el bloque `golpe: { g, quietoSeg }` arma el `DetectorDeGolpe` (pico y después
+///    quietud). Lo que concluye sale YA por `POST /sucesos` y se avisa en [Rastreo.sucesos] para
+///    que la app pregunte «¿estás bien?». [Rastreo.simularGolpe] pasa muestras sintéticas por
+///    el mismo detector, para QA.
+///  · **Medio**: [Rastreo.declararMedio] viaja en la presencia y en el lote mientras dure el
+///    viaje (hasta que la persona vuelve a quedar quieta); `null` vuelve al del perfil.
+///  · **Sin GPS**: el diagnóstico dice por qué (permiso, GPS apagado o sin fix). Sólo local.
 library;
 
 import 'dart:async';
@@ -50,6 +58,10 @@ import 'configuracion_de_rastreo.dart';
 import 'punto.dart';
 import 'detector_de_movimiento.dart';
 import 'emisor_de_lotes.dart';
+import 'golpe/detector_de_golpe.dart';
+import 'golpe/sucesos_del_aparato.dart';
+import 'golpe/vigia_de_golpe.dart';
+import 'sin_gps.dart';
 import 'lote.dart';
 import 'medidor_de_hilo.dart';
 import 'nativo_de_rastreo.dart';
@@ -114,6 +126,11 @@ class DiagnosticoDeRastreo {
     required this.descartados,
     required this.huecos,
     required this.problemas,
+    this.motivoSinGps,
+    this.huecosConMotivo = const [],
+    this.medioDeclarado,
+    this.sucesosPendientes = 0,
+    this.ultimoSuceso,
   });
 
   final String instalacionId;
@@ -149,6 +166,21 @@ class DiagnosticoDeRastreo {
   final int descartados;
   final List<Hueco> huecos;
   final List<String> problemas;
+
+  /// Por qué no hay GPS AHORA, o `null` si lo hay (o no se espera: quieto).
+  final MotivoSinGps? motivoSinGps;
+
+  /// Los [huecos] con su motivo (sólo local: el contrato del lote no lo lleva).
+  final List<({Hueco hueco, MotivoSinGps motivo})> huecosConMotivo;
+
+  /// El medio declarado para el viaje, o `null` (manda el del perfil).
+  final String? medioDeclarado;
+
+  /// Sucesos que esperan en la cola (sin red, o el servidor pidió esperar).
+  final int sucesosPendientes;
+
+  /// El último suceso que concluyó el aparato en esta sesión.
+  final SucesoDelAparato? ultimoSuceso;
 }
 
 class Rastreo {
@@ -203,6 +235,42 @@ class Rastreo {
   final int _sesion = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
   final _cambios = StreamController<void>.broadcast();
+  final _sucesos = StreamController<SucesoDelAparato>.broadcast();
+
+  /// Los sucesos que el aparato concluye (hoy: `golpe_quietud`), en el momento en que se
+  /// concluyen. Es para que la app pregunte «¿estás bien?»: el suceso YA salió (o quedó en la
+  /// cola) hacia Collection, la app no tiene que mandarlo.
+  Stream<SucesoDelAparato> get sucesos => _sucesos.stream;
+
+  /// El vocabulario del medio (contrato `MedioDeTransporte`, sin `desconocido`).
+  static const mediosValidos = {'pie', 'bici', 'dosRuedas', 'carro', 'bus'};
+
+  String? _medioDeclarado;
+  bool _huboRodando = false;
+
+  /// El medio declarado para el viaje en curso, o `null` (manda el del perfil).
+  String? get medioDeclarado => _medioDeclarado;
+
+  /// Declara el medio del viaje actual (`pie`, `bici`, `dosRuedas`, `carro`, `bus`). Viaja en
+  /// la presencia y en cada lote que se arme mientras dure el viaje; al quedar quieto después
+  /// de rodar, se olvida. `null` vuelve al del perfil. Fuera del vocabulario: [ArgumentError].
+  void declararMedio(String? medio) {
+    if (medio != null && !mediosValidos.contains(medio)) {
+      throw ArgumentError.value(medio, 'medio', 'uno de ${mediosValidos.join(', ')}');
+    }
+    _medioDeclarado = medio;
+    _huboRodando = captura.estado == EstadoDeMovimiento.rodando;
+    _presenciaT = 0; // la próxima presencia sale ya, con el medio nuevo
+    _cambios.add(null);
+  }
+
+  final DetectorDeGolpe _detectorDeGolpe = DetectorDeGolpe();
+  VigiaDeGolpe? _vigia;
+  EmisorDeSucesos? _emisorDeSucesos;
+  SucesoDelAparato? _ultimoSuceso;
+  final List<PuntoDeRastreo> _recientes = [];
+  final RegistroSinGps _sinGps = RegistroSinGps();
+  int? _tUltimoPunto;
 
   /// Avisa cada vez que algo cambió (un punto, un envío, un estado). Para refrescar una
   /// pantalla sin sondear.
@@ -363,8 +431,19 @@ class Rastreo {
       configuracion: () => _config,
       loteSeg: () => captura.cadencia.loteSeg ?? FilaDeCadencia.respaldo.loteSeg!,
       registrarClave: _registrarClave,
+      medio: () => _medioDeclarado,
+    );
+    _emisorDeSucesos ??= EmisorDeSucesos(
+      api: api,
+      leer: () => cola.leer('sucesosPendientes'),
+      escribir: (v) => cola.escribir('sucesosPendientes', v),
     );
     await releerConfiguracion();
+    _vigia ??= VigiaDeGolpe(
+      detector: _detectorDeGolpe,
+      alGolpe: (g) => unawaited(_alGolpe(g)),
+      alProblema: _anotarProblema,
+    );
 
     _eventos ??= captura.eventos.listen(_alEvento);
     // RECUPERACIÓN RÁPIDA: al volver la red o al pasar a primer plano se olvida la espera
@@ -376,12 +455,17 @@ class Rastreo {
     // El reloj del emisor: reintentos mientras la persona está quieta (no llegan puntos que
     // lo despierten). Un intento que está esperando no toca la red: cuesta una consulta a
     // SQLite.
-    _reloj ??= Timer.periodic(const Duration(seconds: 30), (_) => unawaited(_intentarEnviar()));
+    _reloj ??= Timer.periodic(const Duration(seconds: 30), (_) {
+      unawaited(_intentarEnviar());
+      unawaited(_intentarSucesos());
+      unawaited(_vigilarGps());
+    });
     _relecturaDeConfig ??=
         Timer.periodic(const Duration(hours: 1), (_) => unawaited(_aplicarConfiguracion()));
 
     final motivo = await _aplicarConfiguracion(releer: false);
     unawaited(_intentarEnviar());
+    unawaited(_intentarSucesos());
     if (motivo == null) {
       unawaited(_presenciaQuieta(primera: true));
       _relojDePresencia ??= Timer.periodic(const Duration(seconds: 5), (_) => unawaited(_presenciaQuieta()));
@@ -392,6 +476,7 @@ class Rastreo {
   /// Aplica la configuración vigente: prende o apaga la captura.
   Future<String?> _aplicarConfiguracion({bool releer = true}) async {
     if (releer) await releerConfiguracion();
+    _detectorDeGolpe.umbrales = _config.golpe;
     if (!_config.activo) {
       if (captura.activa) await captura.detener();
       _motivo = 'la configuración dice activo: false';
@@ -410,6 +495,7 @@ class Rastreo {
   Future<void> detener() async {
     if (identical(_vivo, this)) _vivo = null;
     await captura.detener();
+    await _vigia?.detener();
     _reloj?.cancel();
     _relojDePresencia?.cancel();
     _relojDePresencia = null;
@@ -451,6 +537,8 @@ class Rastreo {
   }
 
   void _recuperar() {
+    _emisorDeSucesos?.reiniciarEspera();
+    unawaited(_intentarSucesos());
     final e = _emisor;
     if (e == null) return;
     _despertarEn(e.reiniciarEspera());
@@ -507,6 +595,7 @@ class Rastreo {
         'h': (p.hasHeading && p.heading >= 0 && p.heading < 360) ? p.heading : PuntoDeRastreo.rumboDesconocido,
         'estado': captura.estado == EstadoDeMovimiento.rodando ? 'rodando' : 'detenido',
         'bat': (bat < 0 || bat > 100) ? -1 : bat,
+        if (_medioDeclarado != null) 'medio': _medioDeclarado,
       });
       if (!r.aceptado) _anotarProblema('presencia: ${r.codigo ?? 'sin red'}');
     } catch (e) {
@@ -539,6 +628,7 @@ class Rastreo {
         // «confirmando» ya se mueve (el GPS preciso está prendido): para la flota es rodando
         'estado': captura.estado == EstadoDeMovimiento.quieto ? 'detenido' : 'rodando',
         'bat': p.bat,
+        if (_medioDeclarado != null) 'medio': _medioDeclarado,
       });
       if (!r.aceptado) _anotarProblema('presencia: ${r.codigo ?? 'sin red'}');
     } catch (_) {}
@@ -563,17 +653,107 @@ class Rastreo {
         if (h != null) await cola.anotarHueco(h.$1, h.$2, tramo);
         _tramoDelUltimo = tramo;
         _ultimoTDelTramo = punto.t;
+        _tUltimoPunto = DateTime.now().millisecondsSinceEpoch;
+        _recientes.add(punto);
+        if (_recientes.length > SucesoDelAparato.maximoDePuntos) _recientes.removeAt(0);
+        _detectorDeGolpe.velocidad(punto.v, punto.t);
         _cambios.add(null);
         unawaited(_mandarPresencia(punto));
         unawaited(_intentarEnviar());
-      case CambioDeEstado(:final motivo, :final vaciar):
+      case CambioDeEstado(:final estado, :final motivo, :final vaciar):
         _motivo = motivo;
+        _vigia?.moviendose(estado != EstadoDeMovimiento.quieto);
+        if (estado == EstadoDeMovimiento.rodando) _huboRodando = true;
         _cambios.add(null);
-        // Siempre se mira el emisor: una fila nueva puede traer un `loteSeg` más corto.
-        unawaited(_intentarEnviar(forzar: vaciar));
+        if (estado == EstadoDeMovimiento.quieto && _huboRodando && _medioDeclarado != null) {
+          // Terminó el viaje: el último lote sale con su medio, y después se olvida.
+          _huboRodando = false;
+          await _intentarEnviar(forzar: true);
+          _medioDeclarado = null;
+          _cambios.add(null);
+        } else {
+          // Siempre se mira el emisor: una fila nueva puede traer un `loteSeg` más corto.
+          unawaited(_intentarEnviar(forzar: vaciar));
+        }
       case ProblemaDeCaptura(:final descripcion):
         _anotarProblema(descripcion);
     }
+  }
+
+  // ══ GOLPE Y SUCESOS ════════════════════════════════════════════════════════════
+
+  /// El detector concluyó un golpe: se arma el suceso con los últimos puntos, se avisa a la
+  /// app y sale YA (o queda en la cola si no hay red).
+  Future<SucesoDelAparato> _alGolpe(GolpeDetectado g, {bool simulado = false}) async {
+    final s = SucesoDelAparato(
+      instalacionId: instalacionId,
+      tipo: TipoDeSuceso.golpeQuietud,
+      t: g.t,
+      confianza: g.confianza,
+      puntos: List.of(_recientes),
+      simulado: simulado,
+    );
+    _ultimoSuceso = s;
+    _sucesos.add(s);
+    _cambios.add(null);
+    final e = _emisorDeSucesos;
+    if (e != null) {
+      final r = await e.encolarYEnviar(s);
+      _trasSucesos(r);
+    } else {
+      _anotarProblema('suceso sin emisor (¿se llamó iniciar?): $s');
+    }
+    return s;
+  }
+
+  Future<void> _intentarSucesos() async {
+    final e = _emisorDeSucesos;
+    if (e == null) return;
+    _trasSucesos(await e.intentar());
+  }
+
+  void _trasSucesos(ResultadoDeSucesos r) {
+    if (r.descartados > 0) _anotarProblema('suceso rechazado: ${_emisorDeSucesos?.ultimoError ?? ''}');
+    if (r.entregados > 0 || r.descartados > 0) _cambios.add(null);
+  }
+
+  /// PARA QA EN EL EMULADOR: pasa un golpe sintético (rodando, un pico de 1,5 × `gPico` y la
+  /// quietud entera) por el MISMO detector —la misma clase, con los mismos umbrales de la
+  /// configuración— y, si concluye, hace lo mismo que un golpe de verdad: avisa en [sucesos]
+  /// y lo manda a Collection. El tiempo va comprimido (no espera los 60 s), por eso corre en
+  /// una instancia aparte: el reloj adelantado no ensucia al detector que escucha el sensor.
+  ///
+  /// Devuelve el suceso, o `null` si el detector no lo concluyó (no debería pasar). Llamarlo
+  /// dos veces en el mismo milisegundo da el mismo id: la ingesta lo toma como el mismo.
+  Future<SucesoDelAparato?> simularGolpe({double? pico}) async {
+    final d = DetectorDeGolpe(_config.golpe);
+    final ahora = DateTime.now().millisecondsSinceEpoch;
+    GolpeDetectado? g;
+    for (final m in DetectorDeGolpe.muestrasDeGolpe(desde: ahora, umbrales: d.umbrales, pico: pico)) {
+      g = d.muestra(m) ?? g;
+    }
+    if (g == null) return null;
+    return _alGolpe(g, simulado: true);
+  }
+
+  /// Mira cada 30 s si hay GPS y, si no, por qué. Dos lecturas al sistema, sin prender nada.
+  Future<void> _vigilarGps() async {
+    try {
+      final p = await Geolocator.checkPermission();
+      final gps = await Geolocator.isLocationServiceEnabled();
+      final ahora = DateTime.now().millisecondsSinceEpoch;
+      final antes = _sinGps.vigente;
+      _sinGps.anotar(
+        clasificarSinGps(
+          permisoConcedido: p == LocationPermission.always || p == LocationPermission.whileInUse,
+          gpsPrendido: gps,
+          moviendose: captura.activa && captura.estado != EstadoDeMovimiento.quieto,
+          msDesdeElUltimoPunto: _tUltimoPunto == null ? null : ahora - _tUltimoPunto!,
+        ),
+        ahora,
+      );
+      if (_sinGps.vigente != antes) _cambios.add(null);
+    } catch (_) {}
   }
 
   void _anotarProblema(String p) {
@@ -612,6 +792,10 @@ class Rastreo {
     final l = await cola.contarLotes();
     final u = (await cola.leer('ultimoEnvio'))?.split('|');
     final enVuelo = await cola.loteEnVuelo();
+    await _vigilarGps();
+    final huecos = await cola.huecosDesde(
+        DateTime.now().subtract(const Duration(hours: 24)).millisecondsSinceEpoch);
+    final ahora = DateTime.now().millisecondsSinceEpoch;
     return DiagnosticoDeRastreo(
       instalacionId: instalacionId,
       sujetoId: _sujetoId,
@@ -649,9 +833,13 @@ class Rastreo {
       proximoIntento: _emisor?.proximoIntento,
       fallosSeguidos: _emisor?.fallosSeguidos ?? 0,
       descartados: await cola.descartados(),
-      huecos: await cola.huecosDesde(
-          DateTime.now().subtract(const Duration(hours: 24)).millisecondsSinceEpoch),
+      huecos: huecos,
       problemas: List.unmodifiable(_problemas),
+      motivoSinGps: _sinGps.vigente,
+      huecosConMotivo: [for (final h in huecos) (hueco: h, motivo: _sinGps.motivoDe(h, ahora: ahora))],
+      medioDeclarado: _medioDeclarado,
+      sucesosPendientes: (await _emisorDeSucesos?.pendientes())?.length ?? 0,
+      ultimoSuceso: _ultimoSuceso,
     );
   }
 }

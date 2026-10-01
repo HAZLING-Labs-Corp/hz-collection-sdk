@@ -423,4 +423,63 @@ class TextosDeRastreoEs extends TextosDeRastreo {
   @override
   String get simRealExplicacion =>
       'Una vuelta por las calles reales desde donde está el teléfono, del medio y la duración que elijas: velocidades creíbles, semáforos, y parado al salir y al volver.';
+
+  @override
+  String get medioDeclarado => 'Medio declarado';
+
+  @override
+  String get medioDelPerfil => 'El del perfil';
+
+  @override
+  String get simularGolpe => 'Simular golpe';
+
+  @override
+  String get golpeExplicacion =>
+      'Pasa un golpe sintético (pico de 1,5 × el umbral y quietud) por el mismo detector, y lo manda a Collection como un suceso real.';
+
+  @override
+  String get golpeNoConcluyo => 'El detector no concluyó el golpe simulado.';
+
+  @override
+  String get estasBienTitulo => '¿Estás bien?';
+
+  @override
+  String get estasBienCuerpo =>
+      'El teléfono notó un golpe fuerte y después quietud. Si necesitas ayuda, avisa a alguien cercano.';
+
+  @override
+  String estasBienSimulado(String confianza) {
+    return 'Golpe simulado · confianza $confianza';
+  }
+
+  @override
+  String estasBienConfianza(String confianza) {
+    return 'Confianza $confianza';
+  }
+
+  @override
+  String get estoyBien => 'Estoy bien';
+
+  @override
+  String get ultimoSuceso => 'Último suceso';
+
+  @override
+  String get sucesosEnCola => 'Sucesos en cola';
+
+  @override
+  String get sinGpsAhora => 'Sin GPS';
+
+  @override
+  String get motivoPermisoRevocado => 'permiso revocado';
+
+  @override
+  String get motivoGpsApagado => 'GPS apagado';
+
+  @override
+  String get motivoSinFix => 'sin señal (sin fix)';
+
+  @override
+  String huecoConMotivo(String hueco, String motivo) {
+    return '$hueco · $motivo';
+  }
 }
