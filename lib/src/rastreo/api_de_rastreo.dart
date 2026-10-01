@@ -142,7 +142,17 @@ class ApiDeRastreo {
     try {
       final j = jsonDecode(r.cuerpoCompleto ?? '');
       final bloque = j is Map ? j['rastreo'] : null;
-      return (bloque is Map ? bloque.cast<String, dynamic>() : null, r);
+      if (bloque is! Map) return (null, r);
+      // La versión de la configuración del comercio viaja arriba, fuera del bloque: es la de
+      // los textos que se le muestran a la persona (ver `ConfiguracionDeRastreo.versionDelTexto`).
+      final version = num.tryParse('${j['version'] ?? ''}');
+      return (
+        <String, dynamic>{
+          ...bloque.cast<String, dynamic>(),
+          if (version != null && !bloque.containsKey('versionDelTexto')) 'versionDelTexto': version.toInt(),
+        },
+        r
+      );
     } catch (_) {
       return (null, r);
     }

@@ -1707,7 +1707,13 @@ class AkPush {
     String? identity,
     Map<String, dynamic>? datos,
   }) async {
-    _asegurarIniciado();
+    // 🔴 SÓLO HACE FALTA LA LLAVE, NO LA CONFIGURACIÓN DE AVISOS. Antes era
+    // `_asegurarIniciado()`, que exige las dos: con el paquete sin Firebase en el
+    // comercio, `init()` sigue «recolectando sin avisos» (ver `_sinAvisosPorque`)
+    // pero acá se tiraba `notInitialized` y la persona NO se daba de alta. Medido en
+    // Rodar el 2026-09-07 (cero aparatos en Collection) y en Si+ el 2026-10-01.
+    // El alta del sujeto no depende de Firebase; lo que sí depende se saltea abajo.
+    if (_api == null) _asegurarIniciado();
 
     // 🔴 `identity` queda en desuso: se traduce ACÁ, una sola vez, para que
     // todo lo de abajo trabaje siempre con `documento` sin importar por cuál
@@ -1734,6 +1740,7 @@ class AkPush {
     // justo el error que la huella del token ya causó una vez con `datos`
     // (ver la nota en `HuellaDelRegistro`). No acotar esta llamada es cómo se
     // evita caer en el mismo agujero por otra puerta.
+    Object? fallaDelSujeto;
     try {
       final instalacionId = await _almacen.leerOCrearInstalacionId();
       await _api!.registrarSujeto(
@@ -1752,7 +1759,12 @@ class AkPush {
       // del login no le puede costar los avisos a nadie. Se anota para el
       // diagnóstico y se sigue.
       _ultimoError = e is AkPushError ? e : null;
+      fallaDelSujeto = e;
     }
+
+    // Sin configuración de avisos no hay permiso que resolver ni token que dar de
+    // alta: la persona queda registrada con su aparato y nada más.
+    if (_config == null) return _sesionSinAvisos(userId, fallaDelSujeto);
 
     // 🔴 Se le PREGUNTA al sistema operativo, no se confía en lo guardado. La
     // persona pudo haber apagado las notificaciones desde los Ajustes del
@@ -1937,6 +1949,40 @@ class AkPush {
     );
   }
 
+  /// El inicio de sesión cuando el comercio todavía no puede avisarle a esta
+  /// aplicación (`_config == null`: paquete sin registrar o sin Firebase).
+  ///
+  /// El sujeto ya se dio de alta con su aparato. Se anota quién es —para el
+  /// comportamiento y los módulos, que miden igual— y se dice por qué no hay
+  /// avisos. No se toca el permiso: sin Firebase iniciado, `FirebaseMessaging`
+  /// no existe, y pedir un permiso que no sirve para nada es gastar el «sí».
+  ///
+  /// Si el alta del sujeto falló, se tira: es lo único que esta llamada hacía, y
+  /// la aplicación tiene que poder decir que la persona no quedó registrada.
+  Future<ResultadoDeSesion> _sesionSinAvisos(String userId, Object? fallaDelSujeto) async {
+    if (fallaDelSujeto != null) {
+      throw fallaDelSujeto is AkPushError
+          ? fallaDelSujeto
+          : AkPushError(AkPushErrorCode.unknown, 'No se pudo registrar a la persona', details: '$fallaDelSujeto');
+    }
+    final anterior = _userId ?? await _almacen.leerUsuario();
+    _userId = userId;
+    await _almacen.guardarUsuario(userId);
+    _comportamiento.entroElSujeto(userId);
+    unawaited(_correrModulos());
+    final porQue = _sinAvisosPorque;
+    return ResultadoDeSesion(
+      puedeRecibir: false,
+      estadoDelPermiso: EstadoDelPermiso.sinPreguntar,
+      accionSugerida: AccionDePermiso.ninguna,
+      huboCambioDePersona: anterior != null && anterior != userId,
+      seRegistro: true,
+      motivo: 'La persona quedó registrada con su aparato, pero el comercio todavía no '
+          'puede enviarle avisos a esta aplicación'
+          '${porQue == null ? '' : ': ${porQue.details ?? porQue.message}'}',
+    );
+  }
+
   /// El alta contra el servicio, más la huella que evita repetirla.
   Future<void> _registrarAhora({
     required String userId,
@@ -2056,7 +2102,11 @@ class AkPush {
     // conserva el sujeto que tenía: pertenece a quien lo hizo, no a quien entre después.
     _comportamiento.salioElSujeto();
     await _almacen.olvidarSesion();
-    await Presentador.instancia.retirarTodos();
+    // Sin avisos (`_config == null`) el presentador nunca se inició: limpiar la barra
+    // de lo que nunca se mostró no puede impedir que se limpie la ruta de abajo.
+    try {
+      await Presentador.instancia.retirarTodos();
+    } catch (_) {}
 
     // Una ruta guardada apunta a los datos de quien estaba usando el teléfono:
     // entregarla después del cierre lo llevaría a la pantalla de otro.

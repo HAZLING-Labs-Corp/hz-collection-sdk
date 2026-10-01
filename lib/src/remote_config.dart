@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'consentimiento.dart';
+import 'errors.dart';
 import 'politica.dart';
 
 /// Un módulo del catálogo, tal como lo describe el servidor.
@@ -133,7 +134,30 @@ class AkPushConfig {
   final Map<String, InfoDeModulo> modulos;
 
   factory AkPushConfig.fromJson(Map<String, dynamic> json) {
-    final fb = (json['firebase'] as Map).cast<String, dynamic>();
+    /// 🔴 «SE PUEDE MEDIR SIN PODER AVISAR» — y esto reventaba con un TypeError.
+    ///
+    /// Desde el 2026-09-15 el servicio contesta 200 con `puede_avisar: false` y SIN el
+    /// bloque `firebase` cuando al paquete le faltan las llaves de envío (está declarado
+    /// en el comercio, pero sin `appId`/`apiKey` de Firebase). El `as Map` de abajo
+    /// tiraba un `TypeError` —no un `AkPushError`—, y `init()` sólo deja seguir sin avisos
+    /// a un `appMismatch`: con un TypeError se caía el arranque entero, no se daba de alta
+    /// la instalación y `alIniciarSesion` terminaba en `notInitialized`. Medido el
+    /// 2026-10-01 con `com.estela.asegurado.dev` en `estela_prueba`.
+    ///
+    /// Es la misma situación que un paquete sin registrar —este teléfono no puede recibir
+    /// avisos de este comercio— y se dice igual, con lo que falta según el servicio.
+    final crudo = json['firebase'];
+    if (crudo is! Map) {
+      final falta = json['falta_para_avisar'];
+      throw AkPushError(
+        AkPushErrorCode.appMismatch,
+        'El comercio todavía no puede enviarle avisos a esta aplicación',
+        details: falta is List && falta.isNotEmpty
+            ? 'Falta en el comercio: ${falta.join(', ')}.'
+            : 'La configuración llegó sin el bloque de Firebase.',
+      );
+    }
+    final fb = crudo.cast<String, dynamic>();
     return AkPushConfig(
       projectId: fb['projectId'] as String,
       appId: fb['appId'] as String,

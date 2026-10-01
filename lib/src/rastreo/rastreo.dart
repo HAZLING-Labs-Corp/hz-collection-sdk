@@ -432,13 +432,16 @@ class Rastreo {
   /// Anota en Collection la decisión sobre el rastreo con el TEXTO EXACTO que se le mostró
   /// (categoría `rastreo`). Va con la persona y la instalación: el pulso lo busca por persona,
   /// así que se llama después de [enrolar]. Nunca rompe a la app: devuelve si se pudo anotar.
-  Future<bool> anotarConsentimiento({required bool concedido, required String textoMostrado, int versionDelTexto = 1}) async {
+  ///
+  /// [versionDelTexto] por omisión es la de la configuración del comercio que trajo el texto
+  /// ([ConfiguracionDeRastreo.versionDelTexto]): si el comercio cambia el texto, sube.
+  Future<bool> anotarConsentimiento({required bool concedido, required String textoMostrado, int? versionDelTexto}) async {
     try {
       await apiDelNucleo.anotarConsentimiento(
         categoria: 'rastreo',
         concedido: concedido,
         textoMostrado: textoMostrado,
-        versionDelTexto: versionDelTexto,
+        versionDelTexto: versionDelTexto ?? _config.versionDelTexto,
         sujetoId: _sujetoId,
         instalacionId: instalacionId,
         plataforma: defaultTargetPlatform.name,

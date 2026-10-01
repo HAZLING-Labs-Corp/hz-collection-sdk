@@ -42,7 +42,15 @@ class ConfiguracionDeRastreo {
     this.medio,
     this.golpe = UmbralesDeGolpe.porOmision,
     this.etiquetas = ConfiguracionDeEtiquetas.ninguna,
+    this.versionDelTexto = 1,
   });
+
+  /// La versión de los textos de la pregunta del rastreo, la que se anota con el
+  /// consentimiento (`versionDelTexto`). Es la versión de la configuración del comercio
+  /// (`version` de `/configuracion`, la misma que usa el consentimiento de avisos): cuando el
+  /// comercio cambia el texto, la versión sube, y lo firmado antes sigue diciendo a qué
+  /// versión se dijo que sí. Sin el campo, 1 — lo que el SDK mandaba siempre (01-10-2026).
+  final int versionDelTexto;
 
   /// Etiquetas BLE (01-10-2026): las de la persona y cómo escucharlas. Sin bloque: no se escanea.
   final ConfiguracionDeEtiquetas etiquetas;
@@ -183,6 +191,7 @@ class ConfiguracionDeRastreo {
           : 1.0,
       golpe: UmbralesDeGolpe.fromJson(j['golpe']),
       etiquetas: ConfiguracionDeEtiquetas.fromJson(j['etiquetas']),
+      versionDelTexto: entero('versionDelTexto', 1, piso: 1),
     );
   }
 
@@ -201,6 +210,7 @@ class ConfiguracionDeRastreo {
         'golpe': golpe.toJson(),
         if (etiquetas.hayQueEscuchar) 'etiquetas': etiquetas.toJson(),
         'cadencia': [for (final f in cadencia) {...f.toJson(), 'si': _siCrudo(f.si)}],
+        'versionDelTexto': versionDelTexto,
       };
 
   static Map<String, dynamic> _siCrudo(CondicionDeCadencia c) {
