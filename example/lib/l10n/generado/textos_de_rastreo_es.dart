@@ -306,4 +306,76 @@ class TextosDeRastreoEs extends TextosDeRastreo {
 
   @override
   String get avisoCuerpo => 'Se apaga solo cuando te detienes.';
+
+  @override
+  String get permisoSiempreTitulo => 'Un paso más: ubicación todo el tiempo';
+
+  @override
+  String get permisoSiempreCuerpo =>
+      'Para seguir tu recorrido con la pantalla apagada, elige «Permitir todo el tiempo» en los ajustes de ubicación de la app.';
+
+  @override
+  String get permisoAbrirAjustes => 'Abrir ajustes';
+
+  @override
+  String get permisoDenegado =>
+      'La ubicación está bloqueada. Actívala desde los ajustes de la app para registrar tu recorrido.';
+
+  @override
+  String get mapaVerMapa => 'Ver mi mapa';
+
+  @override
+  String get mapaTitulo => 'Mi recorrido';
+
+  @override
+  String get mapaBorrar => 'Borrar el recorrido';
+
+  @override
+  String get mapaSeguir => 'Seguirme';
+
+  @override
+  String get mapaSinPuntos => 'Esperando tu primer punto. Empieza a caminar.';
+
+  @override
+  String mapaDistancia(String valor, String unidad) {
+    return 'Distancia: $valor $unidad';
+  }
+
+  @override
+  String mapaDuracion(int min, int seg) {
+    return 'Duración: $min min $seg s';
+  }
+
+  @override
+  String mapaPuntos(int n) {
+    return '$n puntos';
+  }
+
+  @override
+  String mapaUltimo(String cuando) {
+    return 'Último punto: $cuando';
+  }
+
+  @override
+  String get mapaSimulado => 'Ubicación simulada';
+
+  @override
+  String mapaLotes(int ok, int mal) {
+    return 'Lotes enviados: $ok aceptados, $mal rechazados';
+  }
+
+  @override
+  String mapaHaceSeg(int n) {
+    return 'hace $n s';
+  }
+
+  @override
+  String mapaHaceMin(int n) {
+    return 'hace $n min';
+  }
+
+  @override
+  String mapaHaceHoras(int n) {
+    return 'hace $n h';
+  }
 }

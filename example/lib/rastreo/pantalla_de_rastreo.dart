@@ -18,7 +18,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/generado/textos_de_rastreo.dart';
 import 'captura_transistor.dart';
+import 'historial_de_recorrido.dart';
 import 'medidas.dart';
+import 'pantalla_del_mapa.dart';
 import 'ruta_de_prueba.dart';
 
 class PantallaDeRastreo extends StatefulWidget {
@@ -48,6 +50,7 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
   static const _claveCaptura = 'ejemplo.rastreo.captura';
 
   Rastreo? _rastreo;
+  HistorialDeRecorrido? _historial;
   DiagnosticoDeRastreo? _diag;
   StreamSubscription<void>? _cambios;
   Timer? _refresco;
@@ -77,6 +80,7 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
   Future<void> _abrir() async {
     final prefs = await SharedPreferences.getInstance();
     _captura = prefs.getString(_claveCaptura) ?? widget.capturaInicial;
+    _historial = await HistorialDeRecorrido.abrir();
     await _armar();
     _refresco = Timer.periodic(const Duration(seconds: 3), (_) => unawaited(_refrescar()));
   }
@@ -101,6 +105,7 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
       cola: anterior?.cola,
     );
     _rastreo = r;
+    _historial?.escuchar(r.captura);
     _cambios = r.cambios.listen((_) => unawaited(_refrescar()));
     // Si ya estaba enrolado, arranca solo: es lo que hace una app de verdad en cada
     // arranque. La primera vez hay que tocar «Enrolar».
@@ -109,9 +114,108 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
       if (no != null && mounted) setState(() => _aviso = t.noArranco(no));
     }
     await _refrescar();
+    unawaited(_permisoAlAbrir());
   }
 
+  // ═══ CL-36 · EL PERMISO SE PIDE AL ABRIR, COMO MANDA LA POLÍTICA DEL COMERCIO ═══
+  //
+  // La misma regla de Collection que rige las notificaciones (`politica.dart`): cuándo y cómo
+  // pedir lo decide el comercio, y viaja con la configuración (`rastreo.permiso`). Con el módulo
+  // habilitado y `momento: arranque`, al abrir la app: pregunta blanda con los textos del comercio
+  // (el diálogo del sistema se gasta) → ubicación → «todo el tiempo» como segundo paso guiado.
+  static const _clavePermisoAhoraNo = 'ejemplo.rastreo.permisoAhoraNo';
+  bool _permisoYaPreguntado = false;
+
+  Future<void> _permisoAlAbrir() async {
+    if (_permisoYaPreguntado) return;
+    _permisoYaPreguntado = true;
+    final r = _rastreo;
+    if (r == null) return;
+    final c = await r.releerConfiguracion();
+    if (!c.activo || !mounted) return;
+    final pol = c.permiso;
+    if (pol.momento != MomentoDelPermiso.arranque) return;
+    var p = await Geolocator.checkPermission();
+    if (p == LocationPermission.always) {
+      await _arrancarSolo();
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final ultimo = prefs.getInt(_clavePermisoAhoraNo);
+    if (ultimo != null &&
+        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ultimo)).inDays <
+            pol.reintentarCadaDias) {
+      return;
+    }
+    if (p == LocationPermission.deniedForever) {
+      if (mounted) setState(() => _aviso = t.permisoDenegado);
+      return;
+    }
+    if (pol.preguntaBlanda && p == LocationPermission.denied) {
+      final si = await _preguntar(pol.textos.titulo, pol.textos.cuerpo, pol.textos.aceptar, pol.textos.ahoraNo);
+      if (si != true) {
+        await prefs.setInt(_clavePermisoAhoraNo, DateTime.now().millisecondsSinceEpoch);
+        return;
+      }
+    }
+    if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
+    if (p == LocationPermission.whileInUse && mounted) {
+      final txt = t;
+      final ir = await _preguntar(txt.permisoSiempreTitulo, txt.permisoSiempreCuerpo, txt.permisoAbrirAjustes, pol.textos.ahoraNo);
+      if (ir == true) await Geolocator.openAppSettings();
+    }
+    await ActividadDelAparato.pedirPermiso();
+    await _arrancarSolo();
+  }
+
+  /// Al aceptar el permiso el rastreo ARRANCA SOLO: si la instalación todavía no estaba enrolada,
+  /// se enrola (la primera vez no hay que tocar «Enrolar»), y después inicia.
+  Future<void> _arrancarSolo() async {
+    final r = _rastreo;
+    if (r == null) return;
+    if (r.sujetoId == null) await r.enrolar(sujetoId: widget.sujeto);
+    final no = await r.iniciar();
+    if (no != null && mounted) setState(() => _aviso = t.noArranco(no));
+    await _refrescar();
+  }
+
+  Future<bool?> _preguntar(String titulo, String cuerpo, String si, String no) => showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (c) => AlertDialog(
+          title: Text(titulo),
+          content: Text(cuerpo),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: Text(no)),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(si)),
+          ],
+        ),
+      );
+
+  /// Un refresco a la vez. Llegan pedidos del reloj de 3 s y de CADA cambio (un punto, un
+  /// envío): sin esto, con el emulador lento se apilaban diagnósticos en paralelo —cada uno
+  /// ~12 consultas y ~7 viajes al nativo— y la cola de mensajes del hilo principal crecía.
+  /// Los pedidos que llegan mientras uno corre se juntan en UNO al terminar.
+  bool _refrescando = false;
+  bool _otroPendiente = false;
+
   Future<void> _refrescar() async {
+    if (_refrescando) {
+      _otroPendiente = true;
+      return;
+    }
+    _refrescando = true;
+    try {
+      do {
+        _otroPendiente = false;
+        await _refrescarUnaVez();
+      } while (_otroPendiente && mounted);
+    } finally {
+      _refrescando = false;
+    }
+  }
+
+  Future<void> _refrescarUnaVez() async {
     final r = _rastreo;
     if (r == null) return;
     final d = await r.diagnostico();
@@ -193,7 +297,19 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
     final m = context.medidas;
     final d = _diag;
     return Scaffold(
-      appBar: AppBar(title: Text(t.titulo)),
+      appBar: AppBar(
+        title: Text(t.titulo),
+        actions: [
+          IconButton(
+            tooltip: t.mapaVerMapa,
+            icon: const Icon(Icons.map_outlined),
+            onPressed: _historial == null
+                ? null
+                : () => Navigator.of(context).push(MaterialPageRoute<void>(
+                    builder: (_) => PantallaDelMapa(historial: _historial!, rastreo: _rastreo))),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: d == null
             ? const Center(child: CircularProgressIndicator())

@@ -76,6 +76,8 @@ dependencies:
   flutter_background_geolocation: ^5.0.0
   # La batería con más detalle que la del SDK, para la pantalla de diagnóstico.
   battery_plus: ^6.2.1
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
 
 dev_dependencies:
   flutter_test:

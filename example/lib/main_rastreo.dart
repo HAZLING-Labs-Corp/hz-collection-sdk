@@ -12,11 +12,14 @@
 /// buscarlo en la base sin anotar nada.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:hz_collection_sdk/hz_collection_sdk.dart' show MedidorDeHilo;
 
 import 'l10n/generado/textos_de_rastreo.dart';
 import 'rastreo/pantalla_de_rastreo.dart';
+import 'rastreo/vigia_del_hilo.dart';
 
 /// `10.0.2.2` es cómo el emulador de Android llega al localhost de la máquina.
 const _llave = String.fromEnvironment('AKPUSH_KEY', defaultValue: 'pk_demo.local');
@@ -25,8 +28,16 @@ const _urlIngesta = String.fromEnvironment('RASTREO_URL_INGESTA');
 const _sujeto = String.fromEnvironment('RASTREO_SUJETO', defaultValue: 'sujeto-prueba-1');
 const _captura = String.fromEnvironment('RASTREO_CAPTURA', defaultValue: 'propia');
 
+/// Las medidas de hilo (`HzRastreoHilo` en logcat): en debug siempre; en profile o release,
+/// con `--dart-define=RASTREO_MEDIR=true`.
+const _medir = bool.fromEnvironment('RASTREO_MEDIR');
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kDebugMode || _medir) {
+    MedidorDeHilo.activo = true;
+    VigiaDelHilo().arrancar();
+  }
   runApp(const AppDeRastreo());
 }
 

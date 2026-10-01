@@ -113,5 +113,33 @@
   "simulacionIos": "En el simulador de iOS la ruta se inyecta desde la Mac:",
 
   "avisoTitulo": "Registrando tu recorrido",
-  "avisoCuerpo": "Se apaga solo cuando te detienes."
+  "avisoCuerpo": "Se apaga solo cuando te detienes.",
+
+  "permisoSiempreTitulo": "Un paso más: ubicación todo el tiempo",
+  "permisoSiempreCuerpo": "Para seguir tu recorrido con la pantalla apagada, elige «Permitir todo el tiempo» en los ajustes de ubicación de la app.",
+  "permisoAbrirAjustes": "Abrir ajustes",
+  "permisoDenegado": "La ubicación está bloqueada. Actívala desde los ajustes de la app para registrar tu recorrido.",
+
+  "mapaVerMapa": "Ver mi mapa",
+  "mapaTitulo": "Mi recorrido",
+  "mapaBorrar": "Borrar el recorrido",
+  "mapaSeguir": "Seguirme",
+  "mapaSinPuntos": "Esperando tu primer punto. Empieza a caminar.",
+  "mapaDistancia": "Distancia: {valor} {unidad}",
+  "@mapaDistancia": { "placeholders": { "valor": { "type": "String" }, "unidad": { "type": "String" } } },
+  "mapaDuracion": "Duración: {min} min {seg} s",
+  "@mapaDuracion": { "placeholders": { "min": { "type": "int" }, "seg": { "type": "int" } } },
+  "mapaPuntos": "{n} puntos",
+  "@mapaPuntos": { "placeholders": { "n": { "type": "int" } } },
+  "mapaUltimo": "Último punto: {cuando}",
+  "@mapaUltimo": { "placeholders": { "cuando": { "type": "String" } } },
+  "mapaSimulado": "Ubicación simulada",
+  "mapaLotes": "Lotes enviados: {ok} aceptados, {mal} rechazados",
+  "@mapaLotes": { "placeholders": { "ok": { "type": "int" }, "mal": { "type": "int" } } },
+  "mapaHaceSeg": "hace {n} s",
+  "@mapaHaceSeg": { "placeholders": { "n": { "type": "int" } } },
+  "mapaHaceMin": "hace {n} min",
+  "@mapaHaceMin": { "placeholders": { "n": { "type": "int" } } },
+  "mapaHaceHoras": "hace {n} h",
+  "@mapaHaceHoras": { "placeholders": { "n": { "type": "int" } } }
 }

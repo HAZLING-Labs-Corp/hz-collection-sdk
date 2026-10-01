@@ -633,6 +633,114 @@ abstract class TextosDeRastreo {
   /// In es, this message translates to:
   /// **'Se apaga solo cuando te detienes.'**
   String get avisoCuerpo;
+
+  /// No description provided for @permisoSiempreTitulo.
+  ///
+  /// In es, this message translates to:
+  /// **'Un paso más: ubicación todo el tiempo'**
+  String get permisoSiempreTitulo;
+
+  /// No description provided for @permisoSiempreCuerpo.
+  ///
+  /// In es, this message translates to:
+  /// **'Para seguir tu recorrido con la pantalla apagada, elige «Permitir todo el tiempo» en los ajustes de ubicación de la app.'**
+  String get permisoSiempreCuerpo;
+
+  /// No description provided for @permisoAbrirAjustes.
+  ///
+  /// In es, this message translates to:
+  /// **'Abrir ajustes'**
+  String get permisoAbrirAjustes;
+
+  /// No description provided for @permisoDenegado.
+  ///
+  /// In es, this message translates to:
+  /// **'La ubicación está bloqueada. Actívala desde los ajustes de la app para registrar tu recorrido.'**
+  String get permisoDenegado;
+
+  /// No description provided for @mapaVerMapa.
+  ///
+  /// In es, this message translates to:
+  /// **'Ver mi mapa'**
+  String get mapaVerMapa;
+
+  /// No description provided for @mapaTitulo.
+  ///
+  /// In es, this message translates to:
+  /// **'Mi recorrido'**
+  String get mapaTitulo;
+
+  /// No description provided for @mapaBorrar.
+  ///
+  /// In es, this message translates to:
+  /// **'Borrar el recorrido'**
+  String get mapaBorrar;
+
+  /// No description provided for @mapaSeguir.
+  ///
+  /// In es, this message translates to:
+  /// **'Seguirme'**
+  String get mapaSeguir;
+
+  /// No description provided for @mapaSinPuntos.
+  ///
+  /// In es, this message translates to:
+  /// **'Esperando tu primer punto. Empieza a caminar.'**
+  String get mapaSinPuntos;
+
+  /// No description provided for @mapaDistancia.
+  ///
+  /// In es, this message translates to:
+  /// **'Distancia: {valor} {unidad}'**
+  String mapaDistancia(String valor, String unidad);
+
+  /// No description provided for @mapaDuracion.
+  ///
+  /// In es, this message translates to:
+  /// **'Duración: {min} min {seg} s'**
+  String mapaDuracion(int min, int seg);
+
+  /// No description provided for @mapaPuntos.
+  ///
+  /// In es, this message translates to:
+  /// **'{n} puntos'**
+  String mapaPuntos(int n);
+
+  /// No description provided for @mapaUltimo.
+  ///
+  /// In es, this message translates to:
+  /// **'Último punto: {cuando}'**
+  String mapaUltimo(String cuando);
+
+  /// No description provided for @mapaSimulado.
+  ///
+  /// In es, this message translates to:
+  /// **'Ubicación simulada'**
+  String get mapaSimulado;
+
+  /// No description provided for @mapaLotes.
+  ///
+  /// In es, this message translates to:
+  /// **'Lotes enviados: {ok} aceptados, {mal} rechazados'**
+  String mapaLotes(int ok, int mal);
+
+  /// No description provided for @mapaHaceSeg.
+  ///
+  /// In es, this message translates to:
+  /// **'hace {n} s'**
+  String mapaHaceSeg(int n);
+
+  /// No description provided for @mapaHaceMin.
+  ///
+  /// In es, this message translates to:
+  /// **'hace {n} min'**
+  String mapaHaceMin(int n);
+
+  /// No description provided for @mapaHaceHoras.
+  ///
+  /// In es, this message translates to:
+  /// **'hace {n} h'**
+  String mapaHaceHoras(int n);
 }
 
 class _TextosDeRastreoDelegate extends LocalizationsDelegate<TextosDeRastreo> {

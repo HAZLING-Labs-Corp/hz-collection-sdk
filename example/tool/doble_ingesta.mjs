@@ -95,7 +95,9 @@ function validarForma(b) {
     for (const k of ['t', 'lat', 'lon', 'acc', 'v', 'h', 'alt', 'bat']) if (!numero(p[k])) return `punto ${i}: ${k} no es número`;
     if (typeof p.mock !== 'boolean') return `punto ${i}: mock no es booleano`;
     if (Object.keys(p).length !== 9) return `punto ${i}: tiene ${Object.keys(p).length} campos, no 9`;
-    if (p.bat < 0 || p.bat > 100) return `punto ${i}: bat fuera de 0-100`;
+    // §4.12: -1 = batería desconocida; h -1 = rumbo desconocido; alt -9999 = altitud desconocida.
+    if (p.bat !== -1 && (p.bat < 0 || p.bat > 100)) return `punto ${i}: bat fuera de 0-100 (o -1)`;
+    if (p.h !== -1 && (p.h < 0 || p.h >= 360)) return `punto ${i}: h fuera de [0,360) (o -1)`;
   }
   return null;
 }

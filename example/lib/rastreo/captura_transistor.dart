@@ -162,7 +162,7 @@ class CapturaTransistor implements CapturaDeRastreo {
       lon: l.coords.longitude,
       acc: l.coords.accuracy,
       v: l.coords.speed,
-      h: l.coords.heading,
+      h: l.coords.heading, // Transistor ya da -1 si no lo sabe (§4.12)
       alt: l.coords.altitude,
       mock: l.mock,
     );
@@ -179,7 +179,10 @@ class CapturaTransistor implements CapturaDeRastreo {
           h: lectura.h,
           alt: lectura.alt,
           mock: lectura.mock,
-          bat: (l.battery.level * 100).round(),
+          // Transistor da -1 cuando no sabe la batería: va el centinela de §4.12.
+          bat: l.battery.level < 0
+              ? PuntoDeRastreo.bateriaDesconocida
+              : (l.battery.level * 100).round(),
         ),
         d.tramo,
         hueco: dec.hueco,
