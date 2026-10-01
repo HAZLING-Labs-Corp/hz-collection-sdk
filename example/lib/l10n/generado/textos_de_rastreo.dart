@@ -759,6 +759,18 @@ abstract class TextosDeRastreo {
   /// In es, this message translates to:
   /// **'No se pudo armar la caminata: el enrutador no contestó o no hay posición.'**
   String get caminataSinRuta;
+
+  /// No description provided for @simularMoto.
+  ///
+  /// In es, this message translates to:
+  /// **'Simular moto: ir a El Silencio y volver'**
+  String get simularMoto;
+
+  /// No description provided for @motoExplicacion.
+  ///
+  /// In es, this message translates to:
+  /// **'Una moto por las calles reales desde aquí hasta El Silencio y de vuelta: 20 a 60 km/h, semáforos cada ~1,2 km, un minuto en el destino.'**
+  String get motoExplicacion;
 }
 
 class _TextosDeRastreoDelegate extends LocalizationsDelegate<TextosDeRastreo> {

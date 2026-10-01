@@ -13,6 +13,7 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:hz_collection_sdk/hz_collection_sdk.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -293,7 +294,10 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
         }
       });
 
-  Future<void> _simularCaminata() => _hacer(() async {
+  Future<void> _simularMoto() => _simularPorCalles(MedioDePrueba.moto, elSilencio);
+  Future<void> _simularCaminata() => _simularPorCalles(MedioDePrueba.aPie, null);
+
+  Future<void> _simularPorCalles(MedioDePrueba medio, LatLng? destino) => _hacer(() async {
         final sim = _simulacion;
         if (sim != null && sim.corriendo) {
           await Simulador.detener();
@@ -302,7 +306,8 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
         final pos = await Geolocator.getLastKnownPosition() ??
             await Geolocator.getCurrentPosition(
                 locationSettings: const LocationSettings(accuracy: LocationAccuracy.best, timeLimit: Duration(seconds: 15)));
-        final ruta = await caminataDePrueba(lat: pos.latitude, lon: pos.longitude, quietoMin: _rastreo!.configuracion.quietoMin);
+        final ruta = await recorridoDePrueba(
+            lat: pos.latitude, lon: pos.longitude, quietoMin: _rastreo!.configuracion.quietoMin, medio: medio, destino: destino);
         final txt = t;
         if (ruta == null) {
           setState(() => _aviso = txt.caminataSinRuta);
@@ -473,15 +478,20 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
     return _Seccion(
       titulo: t.seccionSimular,
       filas: [
+        _Fila(t.motoExplicacion, '', largo: true),
         _Fila(t.caminataExplicacion, '', largo: true),
-        _Fila(t.simularExplicacion, '', largo: true),
         if (corriendo) _Fila(t.simulando(s.indice, s.total), ''),
       ],
       acciones: [
         FilledButton.icon(
-          onPressed: _ocupado ? null : _simularCaminata,
-          icon: Icon(corriendo ? Icons.stop : Icons.directions_walk),
-          label: Text(corriendo ? t.detenerSimulacion : t.simularCaminata),
+          onPressed: _ocupado ? null : _simularMoto,
+          icon: Icon(corriendo ? Icons.stop : Icons.two_wheeler),
+          label: Text(corriendo ? t.detenerSimulacion : t.simularMoto),
+        ),
+        OutlinedButton.icon(
+          onPressed: _ocupado || corriendo ? null : _simularCaminata,
+          icon: const Icon(Icons.directions_walk),
+          label: Text(t.simularCaminata),
         ),
         OutlinedButton.icon(
           onPressed: _ocupado || corriendo ? null : _simular,

@@ -193,11 +193,21 @@ class _PantallaDelMapaState extends State<PantallaDelMapa> {
                             child: const Icon(Icons.flag, color: Color(0xFF444B55), size: 26),
                           ),
                         if (donde != null)
-                          ml.Marker(
-                            point: donde,
-                            size: const Size(44, 56),
-                            child: Transform.translate(offset: const Offset(0, -26), child: const _PinDePersona()),
-                          ),
+                          (widget.rastreo?.captura.estado == EstadoDeMovimiento.rodando || (_posicion?.speed ?? 0) > 1.0)
+                              // rodando: la figura desde arriba, girando con el rumbo, como un navegador
+                              ? ml.Marker(
+                                  point: donde,
+                                  size: const Size(48, 48),
+                                  child: Transform.rotate(
+                                    angle: ((_posicion?.heading ?? 0) < 0 ? 0 : (_posicion?.heading ?? 0)) * math.pi / 180,
+                                    child: _FiguraDesdeArriba(widget.rastreo?.configuracion.medio),
+                                  ),
+                                )
+                              : ml.Marker(
+                                  point: donde,
+                                  size: const Size(44, 56),
+                                  child: Transform.translate(offset: const Offset(0, -26), child: _PinDelMedio(widget.rastreo?.configuracion.medio)),
+                                ),
                       ]),
                     ],
                   ),
@@ -251,17 +261,21 @@ class _PantallaDelMapaState extends State<PantallaDelMapa> {
   }
 }
 
-/// La personita: cabeza y hombros dentro de un pin con sombra — la misma figura de la consola web.
-class _PinDePersona extends StatelessWidget {
-  const _PinDePersona();
+/// El pin con la figura del medio que mide el perfil (dato `rastreo.medio`): persona, moto o carro —
+/// las mismas siluetas que la consola web.
+class _PinDelMedio extends StatelessWidget {
+  const _PinDelMedio(this.medio);
+  final String? medio;
   @override
-  Widget build(BuildContext context) => const SizedBox(width: 44, height: 56, child: CustomPaint(painter: _PintorDelPin(_colorRuta)));
+  Widget build(BuildContext context) =>
+      SizedBox(width: 44, height: 56, child: CustomPaint(painter: _PintorDelPin(_colorRuta, medio ?? 'pie')));
   static const _colorRuta = Color(0xFF3B6FD4);
 }
 
 class _PintorDelPin extends CustomPainter {
-  const _PintorDelPin(this.color);
+  const _PintorDelPin(this.color, this.medio);
   final Color color;
+  final String medio;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -275,15 +289,96 @@ class _PintorDelPin extends CustomPainter {
     canvas.drawPath(pin, Paint()..color = color);
     canvas.drawPath(pin, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 2.5);
     final blanco = Paint()..color = Colors.white;
-    canvas.drawCircle(const Offset(cx, cy - 5), 5.2, blanco);
-    final hombros = Path()
-      ..moveTo(cx - 9.5, cy + 10)
-      ..quadraticBezierTo(cx - 9.5, cy + 1.5, cx, cy + 1.5)
-      ..quadraticBezierTo(cx + 9.5, cy + 1.5, cx + 9.5, cy + 10)
-      ..close();
-    canvas.drawPath(hombros, blanco);
+    final trazo = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    switch (medio) {
+      case 'dosRuedas':
+      case 'bici':
+        canvas.drawCircle(const Offset(cx - 8, cy + 6), 4.2, trazo);
+        canvas.drawCircle(const Offset(cx + 8, cy + 6), 4.2, trazo);
+        canvas.drawPath(Path()..moveTo(cx - 8, cy + 6)..lineTo(cx - 2, cy - 1)..lineTo(cx + 5, cy - 1)..lineTo(cx + 8, cy + 6), trazo);
+        canvas.drawLine(const Offset(cx + 5, cy - 1), const Offset(cx + 9, cy - 6), trazo);
+        canvas.drawCircle(const Offset(cx + 1, cy - 9), 3, blanco);
+        canvas.drawLine(const Offset(cx + 1, cy - 6), const Offset(cx - 1, cy - 1), trazo);
+      case 'carro':
+      case 'bus':
+        canvas.drawPath(
+            Path()
+              ..moveTo(cx - 13, cy + 4)..lineTo(cx - 13, cy - 1)..lineTo(cx - 8, cy - 2)..lineTo(cx - 4, cy - 8)
+              ..lineTo(cx + 6, cy - 8)..lineTo(cx + 10, cy - 2)..lineTo(cx + 13, cy - 1)..lineTo(cx + 13, cy + 4)..close(),
+            blanco);
+        canvas.drawCircle(const Offset(cx - 7, cy + 5), 3.2, Paint()..color = color);
+        canvas.drawCircle(const Offset(cx + 7, cy + 5), 3.2, Paint()..color = color);
+        canvas.drawCircle(const Offset(cx - 7, cy + 5), 1.6, blanco);
+        canvas.drawCircle(const Offset(cx + 7, cy + 5), 1.6, blanco);
+      default:
+        canvas.drawCircle(const Offset(cx, cy - 5), 5.2, blanco);
+        final hombros = Path()
+          ..moveTo(cx - 9.5, cy + 10)
+          ..quadraticBezierTo(cx - 9.5, cy + 1.5, cx, cy + 1.5)
+          ..quadraticBezierTo(cx + 9.5, cy + 1.5, cx + 9.5, cy + 10)
+          ..close();
+        canvas.drawPath(hombros, blanco);
+    }
   }
 
   @override
-  bool shouldRepaint(covariant _PintorDelPin old) => old.color != color;
+  bool shouldRepaint(covariant _PintorDelPin old) => old.color != color || old.medio != medio;
+}
+
+/// Quien va rodando se ve DESDE ARRIBA y gira con el rumbo: el piloto en su moto (casco, hombros y la
+/// moto con sus dos ruedas), el carro con su parabrisas, o la persona. Las mismas siluetas de la consola.
+class _FiguraDesdeArriba extends StatelessWidget {
+  const _FiguraDesdeArriba(this.medio);
+  final String? medio;
+  @override
+  Widget build(BuildContext context) =>
+      SizedBox(width: 48, height: 48, child: CustomPaint(painter: _PintorDesdeArriba(const Color(0xFF2E9E5B), medio ?? 'pie')));
+}
+
+class _PintorDesdeArriba extends CustomPainter {
+  const _PintorDesdeArriba(this.color, this.medio);
+  final Color color;
+  final String medio;
+
+  RRect _r(double x, double y, double w, double h, double r) => RRect.fromRectAndRadius(Rect.fromLTWH(x, y, w, h), Radius.circular(r));
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const cx = 24.0, cy = 24.0;
+    final disco = Path()..addOval(Rect.fromCircle(center: const Offset(cx, cy), radius: 19));
+    canvas.drawShadow(disco, Colors.black, 4, true);
+    canvas.drawPath(disco, Paint()..color = Colors.white);
+    canvas.drawCircle(const Offset(cx, cy), 19, Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 3);
+    final tinta = Paint()..color = color;
+    final blanco = Paint()..color = Colors.white;
+    final trazo = Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 2.5..strokeCap = StrokeCap.round;
+    switch (medio) {
+      case 'dosRuedas':
+      case 'bici':
+        canvas.drawRRect(_r(cx - 3.5, cy - 15, 7, 30, 3.5), tinta);
+        canvas.drawRRect(_r(cx - 1.6, cy - 14, 3.2, 6, 1.6), blanco);
+        canvas.drawRRect(_r(cx - 1.6, cy + 8, 3.2, 6, 1.6), blanco);
+        canvas.drawLine(const Offset(cx - 9, cy - 3), const Offset(cx + 9, cy - 3), trazo);
+        canvas.drawOval(Rect.fromCenter(center: const Offset(cx, cy + 2), width: 15, height: 10), tinta);
+        canvas.drawCircle(const Offset(cx, cy - 1), 4.2, blanco);
+        canvas.drawCircle(const Offset(cx, cy - 1), 2.8, tinta);
+      case 'carro':
+      case 'bus':
+        canvas.drawRRect(_r(cx - 8, cy - 15, 16, 30, 5), tinta);
+        canvas.drawRRect(_r(cx - 6, cy - 9, 12, 5, 2), blanco);
+        canvas.drawRRect(_r(cx - 6, cy + 6, 12, 4, 2), blanco);
+      default:
+        canvas.drawOval(Rect.fromCenter(center: const Offset(cx, cy + 3), width: 20, height: 11), tinta);
+        canvas.drawCircle(const Offset(cx, cy - 4), 5, blanco);
+        canvas.drawCircle(const Offset(cx, cy - 4), 3.4, tinta);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PintorDesdeArriba old) => old.color != color || old.medio != medio;
 }

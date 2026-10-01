@@ -145,5 +145,8 @@
 
   "simularCaminata": "Simular caminata desde aquí",
   "caminataExplicacion": "Una vuelta a pie de ~1,5 km por las calles reales que salen de donde está el teléfono, a paso humano, con 20 s parado al salir y parado al volver.",
-  "caminataSinRuta": "No se pudo armar la caminata: el enrutador no contestó o no hay posición."
+  "caminataSinRuta": "No se pudo armar la caminata: el enrutador no contestó o no hay posición.",
+
+  "simularMoto": "Simular moto: ir a El Silencio y volver",
+  "motoExplicacion": "Una moto por las calles reales desde aquí hasta El Silencio y de vuelta: 20 a 60 km/h, semáforos cada ~1,2 km, un minuto en el destino."
 }

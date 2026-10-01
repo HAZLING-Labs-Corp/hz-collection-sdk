@@ -389,4 +389,11 @@ class TextosDeRastreoEs extends TextosDeRastreo {
   @override
   String get caminataSinRuta =>
       'No se pudo armar la caminata: el enrutador no contestó o no hay posición.';
+
+  @override
+  String get simularMoto => 'Simular moto: ir a El Silencio y volver';
+
+  @override
+  String get motoExplicacion =>
+      'Una moto por las calles reales desde aquí hasta El Silencio y de vuelta: 20 a 60 km/h, semáforos cada ~1,2 km, un minuto en el destino.';
 }

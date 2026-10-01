@@ -37,6 +37,7 @@ class ConfiguracionDeRastreo {
     this.despertarSeg = 3,
     this.despertarAceleracion = 1.0,
     this.presenciaQuietoSeg = 30,
+    this.medio,
   });
 
   /// Si hay algo que medir. Sin perfil vigente, el servicio manda `false`.
@@ -77,6 +78,9 @@ class ConfiguracionDeRastreo {
 
   /// CL-38 · cada cuántos segundos repite su última posición estando quieto (0 = no repite).
   final int presenciaQuietoSeg;
+
+  /// CL-41 · el medio que mide el perfil (`pie`, `bici`, `dosRuedas`, `carro`, `bus`), para dibujar al aparato.
+  final String? medio;
 
   static const pisoDespertarSeg = 1;
   static const techoDespertarSeg = 60;
@@ -161,6 +165,7 @@ class ConfiguracionDeRastreo {
           ? ((((j['despertar'] as Map)['seg']) is num ? ((j['despertar'] as Map)['seg'] as num).round() : 3)
               .clamp(pisoDespertarSeg, techoDespertarSeg))
           : 3,
+      medio: j['medio'] is String && (j['medio'] as String).isNotEmpty ? j['medio'] as String : null,
       presenciaQuietoSeg: (j['presenciaQuietoSeg'] is num ? (j['presenciaQuietoSeg'] as num).round() : 30).clamp(0, 86400),
       despertarAceleracion: j['despertar'] is Map && (j['despertar'] as Map)['aceleracion'] is num
           ? (((j['despertar'] as Map)['aceleracion'] as num).toDouble()).clamp(0.3, 10.0)
@@ -179,6 +184,7 @@ class ConfiguracionDeRastreo {
         'permiso': permiso.toJson(),
         'despertar': {'seg': despertarSeg, 'aceleracion': despertarAceleracion},
         'presenciaQuietoSeg': presenciaQuietoSeg,
+        'medio': medio,
         'cadencia': [for (final f in cadencia) {...f.toJson(), 'si': _siCrudo(f.si)}],
       };
 
