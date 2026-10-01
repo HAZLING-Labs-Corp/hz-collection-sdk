@@ -123,11 +123,16 @@ class ApiDeRastreo {
 
   /// El bloque `rastreo` de la configuración, o `null` si no vino (o no se pudo leer).
   /// El segundo valor es el código, para el diagnóstico.
+  ///
+  /// Con [instalacionId] (back del tramo 4.2) el servidor contesta la configuración EFECTIVA de
+  /// este aparato: el perfil de su persona, y `activo: false` si su medición está apagada.
   Future<(Map<String, dynamic>?, RespuestaDeIngesta)> leerConfiguracion(
-      String paquete) async {
+      String paquete, {String? instalacionId}) async {
     final r = await _mandar(() => _cliente.get(
-          Uri.parse('$baseUrl/api/v1/configuracion')
-              .replace(queryParameters: {'paquete': paquete}),
+          Uri.parse('$baseUrl/api/v1/configuracion').replace(queryParameters: {
+            'paquete': paquete,
+            if (instalacionId != null && instalacionId.isNotEmpty) 'instalacionId': instalacionId,
+          }),
           headers: _cabeceras,
         ));
     if (!r.aceptado) return (null, r);

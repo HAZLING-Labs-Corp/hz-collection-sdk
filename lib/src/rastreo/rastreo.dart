@@ -52,6 +52,7 @@ import '../device_info.dart';
 import '../version.dart';
 import '../remote_config.dart';
 import '../sujeto.dart';
+import 'apagado_del_servidor.dart';
 import 'aparato_del_rastreo.dart';
 import 'api_de_rastreo.dart';
 import 'cadencia.dart';
@@ -418,7 +419,7 @@ class Rastreo {
   /// Relee el bloque `rastreo`. Si no llega, se queda con el último guardado; si nunca
   /// llegó ninguno, apagado.
   Future<ConfiguracionDeRastreo> releerConfiguracion() async {
-    final (bloque, r) = await api.leerConfiguracion(paquete);
+    final (bloque, r) = await api.leerConfiguracion(paquete, instalacionId: instalacionId);
     _configCodigo = r.codigo;
     _configCuando = DateTime.now();
     if (r.aceptado) {
@@ -538,6 +539,11 @@ class Rastreo {
   /// Aplica la configuración vigente: prende o apaga la captura.
   Future<String?> _aplicarConfiguracion({bool releer = true}) async {
     if (releer) await releerConfiguracion();
+    // la relectura de cada hora también enciende lo que apagó el servidor
+    if (_config.activo && _apagado.apagado) {
+      await _apagado.encender(); // → _retomar, que vuelve a pasar por acá ya encendido
+      return _motivo;
+    }
     _detectorDeGolpe.umbrales = _config.golpe;
     if (!_config.activo) {
       if (captura.activa) await captura.detener();
@@ -554,7 +560,33 @@ class Rastreo {
     return no;
   }
 
+  /// 403 `rastreo_apagado` / `medicion_apagada` (ver `apagado_del_servidor.dart`): se deja de
+  /// capturar y de mandar; la cola queda guardada; se relee la configuración con espera creciente.
+  late final VigiaDelApagado _apagado = VigiaDelApagado(
+    releerActivo: () async => (await releerConfiguracion()).activo,
+    alVolver: _retomar,
+  );
+  bool get apagadoPorElServidor => _apagado.apagado;
+
+  Future<void> _alApagarElServidor(String motivo) async {
+    final ya = _apagado.apagado;
+    _apagado.apagar(motivo);
+    if (ya) return;
+    if (captura.activa) await captura.detener();
+    _motivo = 'el servidor apagó el rastreo ($motivo): la cola queda guardada; se relee la configuración';
+    _anotarProblema(_motivo!);
+    _cambios.add(null);
+  }
+
+  /// Volvió `activo: true`: se retoma la captura y se manda la cola que quedó guardada.
+  Future<void> _retomar() async {
+    _emisor?.reanudar();
+    await _aplicarConfiguracion(releer: false);
+    unawaited(_intentarEnviar(forzar: true));
+  }
+
   Future<void> detener() async {
+    _apagado.detener();
     if (identical(_vivo, this)) _vivo = null;
     // El relevo: si otra captura arranca enseguida (se cambió de captura), sigue el viaje.
     _relevo = (captura.estado, DateTime.now().millisecondsSinceEpoch);
@@ -585,6 +617,7 @@ class Rastreo {
     final e = _emisor;
     if (e == null) return null;
     final r = await e.intentar(forzar: forzar);
+    if (r.que == 'apagado') await _alApagarElServidor(e.motivoDelApagado ?? 'rastreo_apagado');
     if (r.que != 'nadaQueMandar' && r.que != 'esperando') _cambios.add(null);
     _despertarEn(r.proximoIntento);
     return r;
@@ -666,7 +699,12 @@ class Rastreo {
         'bat': (bat < 0 || bat > 100) ? -1 : bat,
         if (_medioDeclarado != null) 'medio': _medioDeclarado,
       });
-      if (!r.aceptado) _anotarProblema('presencia: ${r.codigo ?? 'sin red'}');
+      final err = r.cuerpo == null ? null : RegExp(r'"error"\s*:\s*"([a-z_]+)"').firstMatch(r.cuerpo!)?.group(1);
+      if (esApagadoDelServidor(r.codigo, err)) {
+        await _alApagarElServidor(err!);
+      } else if (!r.aceptado) {
+        _anotarProblema('presencia: ${r.codigo ?? 'sin red'}');
+      }
     } catch (e) {
       // se anota una vez por minuto como mucho: un error que se repite cada 5 s llenaría el diagnóstico
       if (DateTime.now().millisecondsSinceEpoch - _ultimoAvisoDePresencia > 60000) {
@@ -680,6 +718,7 @@ class Rastreo {
   int _ultimoRastroDePresencia = 0;
 
   Future<void> _mandarPresencia(PuntoDeRastreo p) async {
+    if (_apagado.apagado) return;
     final cada = captura.cadencia.presenciaSeg;
     if (cada <= 0) return;
     final ahora = DateTime.now().millisecondsSinceEpoch;
@@ -699,7 +738,12 @@ class Rastreo {
         'bat': p.bat,
         if (_medioDeclarado != null) 'medio': _medioDeclarado,
       });
-      if (!r.aceptado) _anotarProblema('presencia: ${r.codigo ?? 'sin red'}');
+      final err = r.cuerpo == null ? null : RegExp(r'"error"\s*:\s*"([a-z_]+)"').firstMatch(r.cuerpo!)?.group(1);
+      if (esApagadoDelServidor(r.codigo, err)) {
+        await _alApagarElServidor(err!);
+      } else if (!r.aceptado) {
+        _anotarProblema('presencia: ${r.codigo ?? 'sin red'}');
+      }
     } catch (_) {}
   }
 

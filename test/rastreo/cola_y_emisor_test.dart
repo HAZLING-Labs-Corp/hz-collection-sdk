@@ -312,6 +312,45 @@ void main() {
       expect(l.aceptados, 1);
     });
 
+    for (final motivo in ['rastreo_apagado', 'medicion_apagada']) {
+      test('403 $motivo: no rechaza ni reintenta en bucle; el lote queda guardado y sale al reanudar',
+          () async {
+        for (var i = 0; i < 40; i++) {
+          await cola.agregar(_p(i), 1);
+        }
+        respuestas.add((_) => http.Response('{"ok":false,"error":"$motivo"}', 403));
+        final r = await e.intentar();
+        expect(r.que, 'apagado');
+        expect(r.codigo, 403);
+        expect(e.apagadoPorServidor, isTrue);
+        expect(e.motivoDelApagado, motivo);
+        final enVuelo = await cola.loteEnVuelo();
+        expect(enVuelo, isNotNull, reason: 'el lote sigue guardado');
+        expect((await cola.contarLotes()).rechazados, 0, reason: 'no es un lote malo');
+        // apagado: ni el reloj ni un forzado tocan la red
+        ahora = ahora.add(const Duration(hours: 2));
+        for (var k = 0; k < 5; k++) {
+          expect((await e.intentar(forzar: true)).que, 'apagado');
+        }
+        expect(pedidos, hasLength(1), reason: 'no reintenta en bucle');
+        // volvió encendido: sale el MISMO lote (los mismos bytes) y se acepta
+        e.reanudar();
+        expect((await e.intentar()).que, 'enviado');
+        expect(pedidos, hasLength(2));
+        expect(pedidos[1].body, pedidos[0].body);
+        expect((await cola.contarLotes()).aceptados, 1);
+      });
+    }
+
+    test('un 403 con otro motivo sigue siendo un rechazo (no apaga el emisor)', () async {
+      for (var i = 0; i < 40; i++) {
+        await cola.agregar(_p(i), 1);
+      }
+      respuestas.add((_) => http.Response('{"ok":false,"error":"sin_alcance"}', 403));
+      expect((await e.intentar()).que, 'rechazado');
+      expect(e.apagadoPorServidor, isFalse);
+    });
+
     test('401: re-registra la clave y reintenta el mismo lote; al tercero, rechazado', () async {
       var registros = 0;
       e = EmisorDeLotes(

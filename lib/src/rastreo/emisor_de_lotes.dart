@@ -25,6 +25,7 @@
 /// | 409 `en_proceso` | el mismo lote después de `Retry-After` + azar (otra petición lo está escribiendo) |
 /// | 409 `cadena_rota` | se DESARMA el lote (sus puntos vuelven a la cola) y se encadena al `ultimoHash` que manda la ingesta |
 /// | 401 `clave_desconocida` | se re-registra la clave y se reintenta el MISMO lote; al tercer 401, rechazado |
+/// | 403 `rastreo_apagado` / `medicion_apagada` | el SERVIDOR apagó el rastreo: el lote NO se rechaza ni se reintenta; el emisor queda `apagado` (no manda nada) hasta [reanudar]. Ver `apagado_del_servidor.dart` |
 /// | 401 `hash_no_coincide` / `firma_invalida`, otro 4xx | rechazado: los mismos bytes van a dar lo mismo. Se guarda para el diagnóstico |
 ///
 /// Y un techo propio: a lo sumo 5 lotes por minuto (la ingesta corta en 6).
@@ -48,6 +49,7 @@ library;
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'apagado_del_servidor.dart';
 import 'api_de_rastreo.dart';
 import 'cola_de_rastreo.dart';
 import 'configuracion_de_rastreo.dart';
@@ -58,7 +60,8 @@ import 'medidor_de_hilo.dart';
 class ResultadoDelEmisor {
   const ResultadoDelEmisor(this.que, {this.loteId, this.codigo, this.proximoIntento});
 
-  /// `nadaQueMandar` · `esperando` · `enviado` · `reintentar` · `rechazado` · `resincronizado`.
+  /// `nadaQueMandar` · `esperando` · `enviado` · `reintentar` · `rechazado` · `resincronizado` ·
+  /// `apagado` (el servidor apagó el rastreo: 403 `rastreo_apagado` / `medicion_apagada`).
   final String que;
   final String? loteId;
   final int? codigo;
@@ -161,6 +164,23 @@ class EmisorDeLotes {
   DateTime? get proximoIntento => _noAntesDe;
   int get fallosSeguidos => _fallosSeguidos;
 
+  bool _apagadoPorServidor = false;
+  String? _motivoDelApagado;
+
+  /// El servidor contestó 403 `rastreo_apagado` / `medicion_apagada`: no se manda nada hasta
+  /// [reanudar]. Los lotes quedan en la cola tal cual (no se rechazan ni se borran).
+  bool get apagadoPorServidor => _apagadoPorServidor;
+  String? get motivoDelApagado => _motivoDelApagado;
+
+  /// La configuración volvió encendida: se vuelve a mandar, empezando por el lote que esperaba.
+  void reanudar() {
+    _apagadoPorServidor = false;
+    _motivoDelApagado = null;
+    _fallosSeguidos = 0;
+    _noAntesDe = null;
+    _esperaEsPorRetryAfter = false;
+  }
+
   bool _esperaEsPorRetryAfter = false;
 
   /// RECUPERACIÓN RÁPIDA. Se llama cuando vuelve la conectividad o la app pasa a primer
@@ -204,6 +224,7 @@ class EmisorDeLotes {
   }
 
   Future<ResultadoDelEmisor> _unaVuelta({required bool forzar}) async {
+    if (_apagadoPorServidor) return const ResultadoDelEmisor('apagado');
     final ahora = _ahora();
     final noAntes = _noAntesDe;
     if (noAntes != null && ahora.isBefore(noAntes)) {
@@ -279,6 +300,13 @@ class EmisorDeLotes {
         return ResultadoDelEmisor('rechazado', loteId: lote.loteId, codigo: codigo);
       }
       return _fallo(lote.loteId, codigo, null);
+    }
+    // 403 rastreo_apagado / medicion_apagada: el servidor no quiere NADA ahora. No es un lote
+    // malo: no se rechaza, no se reintenta en bucle; queda guardado hasta que vuelva encendido.
+    if (esApagadoDelServidor(codigo, error.codigo)) {
+      _apagadoPorServidor = true;
+      _motivoDelApagado = error.codigo;
+      return ResultadoDelEmisor('apagado', loteId: lote.loteId, codigo: codigo);
     }
     if (codigo == null || codigo >= 500 || codigo == 408) {
       return _fallo(lote.loteId, codigo, r.reintentarEn);
