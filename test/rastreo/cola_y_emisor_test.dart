@@ -172,7 +172,7 @@ void main() {
       expect(b['hashAnterior'], a['hash']);
     });
 
-    test('sin red: espera creciente con tope, y el reintento manda LOS MISMOS bytes', () async {
+    test('sin red: espera con jitter completo, y el reintento manda LOS MISMOS bytes', () async {
       for (var i = 0; i < 40; i++) {
         await cola.agregar(_p(i), 1);
       }
@@ -182,7 +182,9 @@ void main() {
       final r1 = await e.intentar();
       expect(r1.que, 'reintentar');
       final espera1 = r1.proximoIntento!.difference(ahora);
-      expect(espera1.inSeconds, inInclusiveRange(24, 36));
+      // Jitter completo: entre 0 y el tope del primer fallo (30 s), nunca 24-36.
+      expect(espera1, greaterThan(Duration.zero));
+      expect(espera1, lessThanOrEqualTo(const Duration(seconds: 30)));
       // Antes de que venza la espera no sale nada: no se martilla.
       expect((await e.intentar()).que, 'esperando');
       expect(pedidos, hasLength(1));
@@ -193,12 +195,39 @@ void main() {
       expect(pedidos[1].body, pedidos[0].body, reason: 'mismo loteId, misma firma');
     });
 
-    test('la espera crece y tiene techo de 30 minutos', () {
+    test('el tope crece al doble desde 30 s y tiene techo de 30 minutos', () {
+      expect(topeTrasFallo(1), const Duration(seconds: 30));
+      expect(topeTrasFallo(2), const Duration(minutes: 1));
+      expect(topeTrasFallo(5), const Duration(minutes: 8));
+      expect(topeTrasFallo(7), const Duration(minutes: 30));
+      expect(topeTrasFallo(40), const Duration(minutes: 30));
+    });
+
+    test('jitter completo: la espera es uniforme entre 0 y el tope, nunca ±20 %', () {
       final r = math.Random(3);
-      expect(esperaTrasFallo(1, azar: r).inSeconds, inInclusiveRange(24, 36));
-      expect(esperaTrasFallo(2, azar: r).inSeconds, inInclusiveRange(48, 72));
-      expect(esperaTrasFallo(5, azar: r).inSeconds, inInclusiveRange(384, 576));
-      expect(esperaTrasFallo(40, azar: r).inSeconds, inInclusiveRange(1440, 2160));
+      for (final f in [1, 2, 5, 40]) {
+        final tope = topeTrasFallo(f).inMilliseconds;
+        final m = [for (var i = 0; i < 10000; i++) esperaTrasFallo(f, azar: r).inMilliseconds];
+        final media = m.reduce((a, b) => a + b) / m.length;
+        expect(m.every((x) => x >= 0 && x <= tope), isTrue, reason: 'fuera de [0, tope]');
+        // Uniforme: la media en la mitad, y hay esperas por debajo del 80 % (que ±20 % no da).
+        expect(media / tope, closeTo(0.5, 0.02));
+        expect(m.where((x) => x < 0.8 * tope).length / m.length, closeTo(0.8, 0.02));
+        expect(m.reduce(math.min) / tope, lessThan(0.01));
+      }
+    });
+
+    test('Retry-After: espera RA + azar(0, RA), con techo de 1 h en el RA', () {
+      final r = math.Random(5);
+      final m = [
+        for (var i = 0; i < 10000; i++)
+          esperaTrasRetryAfter(const Duration(seconds: 60), azar: r).inMilliseconds
+      ];
+      expect(m.every((x) => x >= 60000 && x <= 120000), isTrue);
+      expect(m.reduce((a, b) => a + b) / m.length, closeTo(90000, 1500));
+      final grande = esperaTrasRetryAfter(const Duration(hours: 5), azar: r);
+      expect(grande, greaterThanOrEqualTo(const Duration(hours: 1)));
+      expect(grande, lessThanOrEqualTo(const Duration(hours: 2)));
     });
 
     test('429 con Retry-After: se espera lo que dice la ingesta', () async {
@@ -210,10 +239,62 @@ void main() {
       final r = await e.intentar();
       expect(r.que, 'reintentar');
       expect(r.codigo, 429);
-      expect(r.proximoIntento!.difference(ahora), const Duration(seconds: 120));
-      // Volver la red no borra un Retry-After.
-      e.volvioLaRed();
+      final espera = r.proximoIntento!.difference(ahora);
+      expect(espera, greaterThanOrEqualTo(const Duration(seconds: 120)));
+      expect(espera, lessThanOrEqualTo(const Duration(seconds: 240)));
+      // Volver la red (o pasar a primer plano) no borra un Retry-After.
+      expect(e.reiniciarEspera(), r.proximoIntento);
       expect((await e.intentar()).que, 'esperando');
+    });
+
+    test('recuperación rápida: al volver la red se olvida el backoff y se intenta en 0-15 s',
+        () async {
+      for (var i = 0; i < 40; i++) {
+        await cola.agregar(_p(i), 1);
+      }
+      // Seis fallos seguidos de red: el tope ya va por 16 min.
+      for (var i = 0; i < 6; i++) {
+        respuestas.add((_) => throw http.ClientException('sin red'));
+        final r = await e.intentar();
+        expect(r.que, 'reintentar');
+        ahora = r.proximoIntento!.add(const Duration(milliseconds: 1));
+      }
+      expect(e.fallosSeguidos, 6);
+      respuestas.add((_) => throw http.ClientException('sin red'));
+      final r7 = await e.intentar();
+      expect(topeTrasFallo(7), const Duration(minutes: 30));
+      expect(r7.proximoIntento!.isAfter(ahora), isTrue);
+      // Vuelve la red: el próximo intento cae entre 0 y 15 s, no hasta 30 min.
+      final cuando = e.reiniciarEspera()!;
+      expect(e.fallosSeguidos, 0);
+      expect(cuando.difference(ahora).inMilliseconds, inInclusiveRange(0, 15000));
+      ahora = cuando.add(const Duration(milliseconds: 1));
+      expect((await e.intentar()).que, 'enviado');
+      // Y un fallo después de reiniciar vuelve a empezar por el tope de 30 s.
+      for (var i = 0; i < 40; i++) {
+        await cola.agregar(_p(100 + i), 1);
+      }
+      ahora = ahora.add(const Duration(minutes: 1));
+      respuestas.add((_) => throw http.ClientException('sin red'));
+      final r = await e.intentar();
+      expect(r.proximoIntento!.difference(ahora), lessThanOrEqualTo(const Duration(seconds: 30)));
+    });
+
+    test('recuperación rápida: la ventana de 0-15 s se reparte (no vuelven todos juntos)', () {
+      final t0 = ahora;
+      final r = math.Random(9);
+      final segundos = List.filled(16, 0);
+      for (var i = 0; i < 10000; i++) {
+        final x = EmisorDeLotes(
+          cola: cola, api: e.api, firmador: _Firmador(), instalacionId: 'i$i',
+          reloj: (g) async => const RelojDelLote(mono: 1, arranques: 1),
+          configuracion: () => config, loteSeg: () => 300, registrarClave: () async => true,
+          ahora: () => t0, azar: r,
+        );
+        segundos[x.reiniciarEspera()!.difference(t0).inSeconds]++;
+      }
+      // 10.000 / 15 s ≈ 667 por segundo; ninguno pasa de ~760.
+      expect(segundos.take(15).every((n) => n > 560 && n < 780), isTrue, reason: '$segundos');
     });
 
     test('un 409/422 se da por rechazado y el siguiente lote encadena con el último ACEPTADO',
@@ -292,7 +373,8 @@ void main() {
           headers: {'retry-after': '5'}));
       final r = await e.intentar();
       expect(r.que, 'reintentar');
-      ahora = ahora.add(const Duration(seconds: 6));
+      expect(r.proximoIntento!.difference(ahora).inMilliseconds, inInclusiveRange(5000, 10000));
+      ahora = r.proximoIntento!.add(const Duration(milliseconds: 1));
       expect((await e.intentar()).que, 'enviado');
       expect(pedidos[1].body, pedidos[0].body);
     });

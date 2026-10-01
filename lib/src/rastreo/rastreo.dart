@@ -31,6 +31,7 @@ import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -47,6 +48,7 @@ import 'configuracion_de_rastreo.dart';
 import 'detector_de_movimiento.dart';
 import 'emisor_de_lotes.dart';
 import 'lote.dart';
+import 'medidor_de_hilo.dart';
 import 'nativo_de_rastreo.dart';
 
 /// Cómo salió cada paso del enrolamiento. Los tres son independientes: que el sujeto no se
@@ -188,6 +190,8 @@ class Rastreo {
   StreamSubscription<EventoDeCaptura>? _eventos;
   StreamSubscription<List<ConnectivityResult>>? _red;
   Timer? _reloj;
+  Timer? _despertador;
+  AppLifecycleListener? _ciclo;
   Timer? _relecturaDeConfig;
   String? _motivo;
   final List<String> _problemas = [];
@@ -320,12 +324,12 @@ class Rastreo {
     await releerConfiguracion();
 
     _eventos ??= captura.eventos.listen(_alEvento);
+    // RECUPERACIÓN RÁPIDA: al volver la red o al pasar a primer plano se olvida la espera
+    // creciente y se intenta a un azar de 0 a 15 s (no a los 30 min del tope).
     _red ??= Connectivity().onConnectivityChanged.listen((r) {
-      if (r.any((x) => x != ConnectivityResult.none)) {
-        _emisor?.volvioLaRed();
-        unawaited(_intentarEnviar());
-      }
+      if (r.any((x) => x != ConnectivityResult.none)) _recuperar();
     });
+    _ciclo ??= AppLifecycleListener(onResume: _recuperar);
     // El reloj del emisor: reintentos mientras la persona está quieta (no llegan puntos que
     // lo despierten). Un intento que está esperando no toca la red: cuesta una consulta a
     // SQLite.
@@ -360,6 +364,10 @@ class Rastreo {
     await captura.detener();
     _reloj?.cancel();
     _reloj = null;
+    _despertador?.cancel();
+    _despertador = null;
+    _ciclo?.dispose();
+    _ciclo = null;
     _relecturaDeConfig?.cancel();
     _relecturaDeConfig = null;
     await _red?.cancel();
@@ -378,7 +386,25 @@ class Rastreo {
     if (e == null) return null;
     final r = await e.intentar(forzar: forzar);
     if (r.que != 'nadaQueMandar' && r.que != 'esperando') _cambios.add(null);
+    _despertarEn(r.proximoIntento);
     return r;
+  }
+
+  /// Programa un intento justo cuando termina la espera. Sin esto, el intento caería en el
+  /// siguiente tic de 30 s del reloj y el azar de la espera quedaría redondeado a ese tic.
+  void _despertarEn(DateTime? cuando) {
+    if (cuando == null || _reloj == null) return;
+    final falta = cuando.difference(DateTime.now());
+    _despertador?.cancel();
+    _despertador = Timer(falta.isNegative ? Duration.zero : falta + const Duration(milliseconds: 50),
+        () => unawaited(_intentarEnviar()));
+  }
+
+  void _recuperar() {
+    final e = _emisor;
+    if (e == null) return;
+    _despertarEn(e.reiniciarEspera());
+    _cambios.add(null);
   }
 
   Future<void> _alEvento(EventoDeCaptura ev) async {
@@ -437,7 +463,12 @@ class Rastreo {
     return RelojDelLote(mono: r.mono, arranques: arranques, gnss: gnss);
   }
 
-  Future<DiagnosticoDeRastreo> diagnostico() async {
+  /// Lo que muestra la pantalla de diagnóstico. Son ~12 consultas a SQLite y ~5 viajes al
+  /// nativo: todas con `await`, ninguna bloquea el hilo; se mide igual (`MedidorDeHilo`).
+  Future<DiagnosticoDeRastreo> diagnostico() =>
+      MedidorDeHilo.asincrono('diagnostico', _diagnostico);
+
+  Future<DiagnosticoDeRastreo> _diagnostico() async {
     final permiso = await Geolocator.checkPermission();
     final t = await cola.tamano();
     final l = await cola.contarLotes();

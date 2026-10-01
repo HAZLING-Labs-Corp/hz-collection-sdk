@@ -133,5 +133,6 @@ export 'src/rastreo/detector_de_movimiento.dart'
     show EstadoDeMovimiento, TipoDeActividad, DetectorDeMovimiento, Lectura, Decision;
 export 'src/rastreo/cola_de_rastreo.dart' show Hueco;
 export 'src/rastreo/emisor_de_lotes.dart' show ResultadoDelEmisor;
+export 'src/rastreo/medidor_de_hilo.dart' show MedidorDeHilo;
 export 'src/rastreo/nativo_de_rastreo.dart'
     show EnergiaDelAparato, ActividadDelAparato, ClaveDelAparato;

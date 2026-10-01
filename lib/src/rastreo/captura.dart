@@ -28,10 +28,12 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:sensors_plus/sensors_plus.dart';
 
 import 'cadencia.dart';
 import 'configuracion_de_rastreo.dart';
@@ -136,6 +138,9 @@ class CapturaPropia implements CapturaDeRastreo {
   DetectorDeMovimiento? _detector;
   StreamSubscription<Position>? _flujo;
   StreamSubscription<TipoDeActividad>? _actividad;
+  StreamSubscription<UserAccelerometerEvent>? _acel;
+  int? _movDesde;
+  int _ultimoMov = 0;
   Timer? _tic;
   bool? _flujoPreciso;
   bool _activa = false;
@@ -182,6 +187,13 @@ class CapturaPropia implements CapturaDeRastreo {
       _eventos.add(const ProblemaDeCaptura(
           'sin permiso de actividad física: se detecta sólo por zona y velocidad'));
     }
+    // CL-37 · DESPERTAR POR ACELERÓMETRO: quieto y con el GPS apagado, un teléfono que se mueve
+    // `despertarSeg` segundos seguidos enciende el GPS preciso (la actividad del sistema y la
+    // salida de zona llegan tarde, o no llegan sin permiso). Sólo se mira estando quieto.
+    _acel = userAccelerometerEventStream(samplingPeriod: SensorInterval.normalInterval).listen(
+      _alAcelerometro,
+      onError: (Object e) => _eventos.add(ProblemaDeCaptura('acelerómetro: $e')),
+    );
     // «Cada pocos segundos» (PM-025 §4.5): la tabla se reevalúa aunque no lleguen lecturas
     // —la hora cruza las 22:00, el quieto pasa de 5 a 30 min—. Es una cuenta en memoria.
     _tic = Timer.periodic(const Duration(seconds: 5),
@@ -204,8 +216,34 @@ class CapturaPropia implements CapturaDeRastreo {
     _tic = null;
     await _actividad?.cancel();
     _actividad = null;
+    await _acel?.cancel();
+    _acel = null;
+    _movDesde = null;
     await _cerrarFlujo();
     _detector = null;
+  }
+
+  /// El movimiento cuenta si pasa de [ConfiguracionDeRastreo.despertarAceleracion]; un hueco de
+  /// hasta 1,5 s no corta la racha (caminar tiene instantes de calma entre paso y paso).
+  void _alAcelerometro(UserAccelerometerEvent e) {
+    final d = _detector;
+    if (d == null || d.estado != EstadoDeMovimiento.quieto) {
+      _movDesde = null;
+      return;
+    }
+    final ahora = DateTime.now().millisecondsSinceEpoch;
+    final mag = math.sqrt(e.x * e.x + e.y * e.y + e.z * e.z);
+    if (mag >= _config.despertarAceleracion) {
+      _ultimoMov = ahora;
+      _movDesde ??= ahora;
+    } else if (_movDesde != null && ahora - _ultimoMov > 1500) {
+      _movDesde = null;
+    }
+    final desde = _movDesde;
+    if (desde != null && ahora - desde >= _config.despertarSeg * 1000) {
+      _movDesde = null;
+      unawaited(_aplicar(d.actividad(TipoDeActividad.aPie, ahora)));
+    }
   }
 
   Future<void> _cerrarFlujo() async {
@@ -280,8 +318,10 @@ class CapturaPropia implements CapturaDeRastreo {
       lon: p.longitude,
       acc: p.accuracy,
       v: p.speed,
-      h: p.heading,
-      alt: p.altitude,
+      // geolocator pone 0.0 cuando el sistema no da el dato (y 0 es el norte y el nivel
+      // del mar): se mira la bandera `has*`. iOS además marca el rumbo inválido con < 0.
+      h: (p.hasHeading && p.heading >= 0) ? p.heading : PuntoDeRastreo.rumboDesconocido,
+      alt: p.hasAltitude ? p.altitude : PuntoDeRastreo.altitudDesconocida,
       mock: p.isMocked,
     );
     final dec = d.lectura(l, precisa: preciso);
@@ -326,6 +366,8 @@ class CapturaPropia implements CapturaDeRastreo {
       }
       _bateriaLeida = ahora;
     }
-    return _nivelDeBateria < 0 ? 0 : _nivelDeBateria;
+    return (_nivelDeBateria < 0 || _nivelDeBateria > 100)
+        ? PuntoDeRastreo.bateriaDesconocida
+        : _nivelDeBateria;
   }
 }

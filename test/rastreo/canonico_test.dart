@@ -91,6 +91,7 @@ void main() {
     expect(p.acc, 4.6);
     expect(p.v, 0); // sin velocidad no se inventa una negativa
     expect(p.h, 1.3);
-    expect(p.bat, 100);
+    // Una batería fuera de 0-100 no es 100: es un dato roto → desconocida (§4.12).
+    expect(p.bat, -1);
   });
 }

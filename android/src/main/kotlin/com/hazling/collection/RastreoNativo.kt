@@ -10,6 +10,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
@@ -17,6 +19,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
@@ -28,6 +31,8 @@ import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
  * EL LADO NATIVO DEL RASTREO EN ANDROID — canal `hz_collection_sdk/rastreo`.
@@ -45,6 +50,8 @@ import java.security.spec.ECGenParameterSpec
  * dependencia más que auditar; `compileOnly` usa la que ya está. Si algún día no estuviera,
  * se atrapa el `NoClassDefFoundError` y la actividad se da por no disponible.
  */
+private const val ETIQUETA = "HzRastreoHilo"
+
 class RastreoNativo(
     private val contexto: Context,
     mensajero: BinaryMessenger,
@@ -60,6 +67,20 @@ class RastreoNativo(
     private var receptor: BroadcastReceiver? = null
     private var intencion: PendingIntent? = null
 
+    /**
+     * 🔴 LA CLAVE NO SE TOCA EN EL HILO PRINCIPAL. `MethodChannel` entrega en el hilo
+     * principal de Android, que desde Flutter 3.29 es TAMBIÉN el hilo del isolate de Dart
+     * (hilos fusionados). El AndroidKeyStore es IPC con `keystore2` —y con StrongBox, con un
+     * chip aparte—: generar una clave puede tardar segundos y firmar decenas o cientos de ms
+     * en un teléfono barato o con el sistema cargado. En el hilo principal eso es un ANR
+     * («Input dispatching timed out») y además congela a Dart. Se hace en un hilo propio, de
+     * a una operación por vez (el Keystore no gana nada con paralelo), y la respuesta vuelve
+     * al hilo principal, que es donde `Result` tiene que responderse.
+     */
+    private val hiloDeLaClave: ExecutorService =
+        Executors.newSingleThreadExecutor { r -> Thread(r, "hz-rastreo-clave") }
+    private val principal = Handler(Looper.getMainLooper())
+
     init {
         canal.setMethodCallHandler(this)
         eventos.setStreamHandler(this)
@@ -69,18 +90,45 @@ class RastreoNativo(
         canal.setMethodCallHandler(null)
         eventos.setStreamHandler(null)
         onCancel(null)
+        hiloDeLaClave.shutdown()
+    }
+
+    /** Corre [trabajo] en el hilo de la clave, mide cuánto tardó y en qué hilo, y responde en el principal. */
+    private fun enSegundoPlano(que: String, resultado: MethodChannel.Result, trabajo: () -> Any?) {
+        val encolado = SystemClock.elapsedRealtimeNanos()
+        hiloDeLaClave.execute {
+            val inicio = SystemClock.elapsedRealtimeNanos()
+            val salida = runCatching(trabajo)
+            val fin = SystemClock.elapsedRealtimeNanos()
+            Log.i(
+                ETIQUETA,
+                "$que hilo=${Thread.currentThread().name} principal=${Looper.myLooper() == Looper.getMainLooper()} " +
+                    "trabajo=${(fin - inicio) / 1_000_000.0}ms espera=${(inicio - encolado) / 1_000_000.0}ms",
+            )
+            principal.post {
+                salida.fold(
+                    onSuccess = { resultado.success(it) },
+                    onFailure = { resultado.error("rastreo", it.message ?: it.javaClass.simpleName, null) },
+                )
+            }
+        }
     }
 
     override fun onMethodCall(call: MethodCall, resultado: MethodChannel.Result) {
         try {
             when (call.method) {
-                "clave.asegurar" -> resultado.success(asegurarClave(call.argument<String>("alias")!!))
-                "clave.firmar" -> resultado.success(
-                    firmar(call.argument<String>("alias")!!, call.argument<ByteArray>("datos")!!)
-                )
+                "clave.asegurar" -> {
+                    val alias = call.argument<String>("alias")!!
+                    enSegundoPlano("clave.asegurar", resultado) { asegurarClave(alias) }
+                }
+                "clave.firmar" -> {
+                    val alias = call.argument<String>("alias")!!
+                    val datos = call.argument<ByteArray>("datos")!!
+                    enSegundoPlano("clave.firmar(${datos.size}B)", resultado) { firmar(alias, datos) }
+                }
                 "clave.borrar" -> {
-                    almacen().deleteEntry(call.argument<String>("alias")!!)
-                    resultado.success(null)
+                    val alias = call.argument<String>("alias")!!
+                    enSegundoPlano("clave.borrar", resultado) { almacen().deleteEntry(alias); null }
                 }
                 "reloj" -> resultado.success(reloj())
                 "energia" -> resultado.success(energia())

@@ -38,6 +38,7 @@ import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 
 import 'lote.dart';
+import 'medidor_de_hilo.dart';
 import 'punto.dart';
 
 /// Un punto que espera, con su fila.
@@ -188,34 +189,43 @@ class ColaDeRastreo {
   // ── Puntos ────────────────────────────────────────────────────────────────────────
 
   Future<void> agregar(PuntoDeRastreo p, int tramo) async {
-    final json = jsonEncode(p.toJson());
-    await _db.insert('puntos', {
-      't': p.t,
-      'json': json,
-      'bytes': utf8.encode(json).length,
-      'tramo': tramo,
+    final (json, bytes) = MedidorDeHilo.sincrono('cola.agregar.json', () {
+      final j = jsonEncode(p.toJson());
+      return (j, utf8.encode(j).length);
     });
+    // sqflite ejecuta la consulta en SU hilo (Android: un hilo de trabajo por base; iOS:
+    // una cola de GCD). Acá sólo se espera.
+    await MedidorDeHilo.asincrono(
+        'cola.agregar.sqlite',
+        () => _db.insert('puntos', {
+              't': p.t,
+              'json': json,
+              'bytes': bytes,
+              'tramo': tramo,
+            }));
     if (++_desdeQueSeMiro >= _mirarTechoCada) {
       _desdeQueSeMiro = 0;
-      await respetarTecho();
+      await MedidorDeHilo.asincrono('cola.respetarTecho', respetarTecho);
     }
   }
 
   Future<List<PuntoEnCola>> pendientes(int cuantos) async {
-    final filas = await _db.query('puntos',
-        columns: ['id', 'json', 'tramo'],
-        where: 'lote IS NULL',
-        orderBy: 'id',
-        limit: cuantos);
-    return [
-      for (final f in filas)
-        PuntoEnCola(
-          f['id'] as int,
-          PuntoDeRastreo.fromJson(
-              (jsonDecode(f['json'] as String) as Map).cast<String, dynamic>()),
-          f['tramo'] as int,
-        ),
-    ];
+    final filas = await MedidorDeHilo.asincrono(
+        'cola.pendientes.sqlite',
+        () => _db.query('puntos',
+            columns: ['id', 'json', 'tramo'],
+            where: 'lote IS NULL',
+            orderBy: 'id',
+            limit: cuantos));
+    return MedidorDeHilo.sincrono('cola.pendientes.decodificar(${filas.length})', () => [
+          for (final f in filas)
+            PuntoEnCola(
+              f['id'] as int,
+              PuntoDeRastreo.fromJson(
+                  (jsonDecode(f['json'] as String) as Map).cast<String, dynamic>()),
+              f['tramo'] as int,
+            ),
+        ]);
   }
 
   Future<int> contarPendientes() async => Sqflite.firstIntValue(

@@ -22,6 +22,29 @@ final class RastreoNativo: NSObject, FlutterStreamHandler {
   private var sumidero: FlutterEventSink?
   private var ultimo: String?
 
+  /// 🔴 La clave no se toca en el hilo principal: el Secure Enclave es otro procesador, y
+  /// crear una clave o firmar puede tardar decenas de ms (más con el sistema cargado). En el
+  /// hilo principal eso congela la interfaz y, con los hilos fusionados de Flutter, también
+  /// a Dart. Una cola serie propia; la respuesta vuelve al principal.
+  private let colaDeLaClave = DispatchQueue(label: "hz.rastreo.clave", qos: .utility)
+
+  private func enSegundoPlano(_ que: String, _ result: @escaping FlutterResult,
+                              _ trabajo: @escaping () throws -> Any?) {
+    let encolado = DispatchTime.now().uptimeNanoseconds
+    colaDeLaClave.async {
+      let inicio = DispatchTime.now().uptimeNanoseconds
+      let salida: Any?
+      do { salida = try trabajo() } catch {
+        salida = FlutterError(code: "rastreo", message: "\(error)", details: nil)
+      }
+      let fin = DispatchTime.now().uptimeNanoseconds
+      NSLog("HzRastreoHilo %@ principal=%@ trabajo=%.1fms espera=%.1fms", que,
+            Thread.isMainThread ? "true" : "false",
+            Double(fin - inicio) / 1e6, Double(inicio - encolado) / 1e6)
+      DispatchQueue.main.async { result(salida) }
+    }
+  }
+
   init(mensajero: FlutterBinaryMessenger) {
     canal = FlutterMethodChannel(name: "hz_collection_sdk/rastreo", binaryMessenger: mensajero)
     eventos = FlutterEventChannel(name: "hz_collection_sdk/rastreo/actividad",
@@ -38,13 +61,22 @@ final class RastreoNativo: NSObject, FlutterStreamHandler {
     do {
       switch call.method {
       case "clave.asegurar":
-        result(try asegurarClave(alias: args["alias"] as? String ?? ""))
+        let alias = args["alias"] as? String ?? ""
+        enSegundoPlano("clave.asegurar", result) { [unowned self] in
+          try self.asegurarClave(alias: alias)
+        }
       case "clave.firmar":
         let datos = (args["datos"] as? FlutterStandardTypedData)?.data ?? Data()
-        result(try firmar(alias: args["alias"] as? String ?? "", datos: datos))
+        let alias = args["alias"] as? String ?? ""
+        enSegundoPlano("clave.firmar(\(datos.count)B)", result) { [unowned self] in
+          try self.firmar(alias: alias, datos: datos)
+        }
       case "clave.borrar":
-        SecItemDelete(consulta(alias: args["alias"] as? String ?? "") as CFDictionary)
-        result(nil)
+        let alias = args["alias"] as? String ?? ""
+        enSegundoPlano("clave.borrar", result) { [unowned self] in
+          SecItemDelete(self.consulta(alias: alias) as CFDictionary)
+          return nil
+        }
       case "reloj":
         // CLOCK_MONOTONIC en Darwin cuenta el tiempo dormido. iOS no tiene contador de
         // arranques: se devuelve -1 y Dart lo cuenta.

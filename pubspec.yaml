@@ -54,6 +54,7 @@ dependencies:
   sqflite: ^2.3.0
   # SHA-256 del cuerpo canónico del lote. Puro Dart.
   crypto: ^3.0.6
+  sensors_plus: ^7.1.0
 
 dev_dependencies:
   flutter_test:

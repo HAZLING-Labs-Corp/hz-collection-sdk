@@ -20,19 +20,29 @@
 /// | respuesta | qué pasa |
 /// |---|---|
 /// | 200 / 202 | aceptado. Se guarda su hash como el anterior del siguiente. Si queda atraso, se sigue |
-/// | 429 | se espera lo que diga `Retry-After` (techo 1 h), o la espera creciente si no lo dice |
-/// | 5xx, 408, sin red | espera creciente: 30 s, 1, 2, 4… con techo de 30 min y ±20 % de azar |
-/// | 409 `en_proceso` | el mismo lote después de `Retry-After` (otra petición lo está escribiendo) |
+/// | 429 | `Retry-After` (techo 1 h) + azar entre 0 y ese mismo `Retry-After`; o la espera creciente si no lo dice |
+/// | 5xx, 408, sin red | espera creciente con JITTER COMPLETO: azar entre 0 y el tope (30 s, 1, 2, 4… techo 30 min) |
+/// | 409 `en_proceso` | el mismo lote después de `Retry-After` + azar (otra petición lo está escribiendo) |
 /// | 409 `cadena_rota` | se DESARMA el lote (sus puntos vuelven a la cola) y se encadena al `ultimoHash` que manda la ingesta |
 /// | 401 `clave_desconocida` | se re-registra la clave y se reintenta el MISMO lote; al tercer 401, rechazado |
 /// | 401 `hash_no_coincide` / `firma_invalida`, otro 4xx | rechazado: los mismos bytes van a dar lo mismo. Se guarda para el diagnóstico |
 ///
 /// Y un techo propio: a lo sumo 5 lotes por minuto (la ingesta corta en 6).
 ///
-/// 🔴 **El azar de la espera no es un adorno.** Un millón de teléfonos que perdieron la
-/// señal a la vez —un corte de la operadora— la recuperan a la vez. Sin azar reintentan
-/// todos en el mismo segundo, cada 30 s, 1 min, 2 min… y la ingesta recibe olas de un
-/// millón de requests. Con ±20 % las olas se aplanan.
+/// 🔴 **El azar de la espera no es un adorno, y ±20 % no alcanza (contrato §4.12).** Un
+/// millón de teléfonos que perdieron el servidor a la vez —una caída de la ingesta, un
+/// corte de la operadora— fallan a la vez. Con ±20 % sobre 30 s vuelven todos entre los
+/// 24 y los 36 s: ~83 mil requests por segundo durante 12 s. Con JITTER COMPLETO (azar
+/// entre 0 y el tope) se reparten en toda la espera, y cada ronda siguiente se reparte en
+/// una ventana el doble de ancha. La cifra medida está en `test/rastreo/jitter_test.dart`.
+///
+/// ══ RECUPERACIÓN RÁPIDA ══
+///
+/// Cuando vuelve la red o la app pasa a primer plano, [reiniciarEspera] olvida la espera
+/// creciente y deja el próximo intento a un azar corto de 0 a [ventanaDeRecuperacion]
+/// (15 s): si la red nunca se cortó de verdad, no hay por qué esperar hasta 30 min. Un
+/// `Retry-After` vigente NO se olvida: lo pidió el servidor, y la red del teléfono no
+/// cambia lo que le pasa al servidor.
 library;
 
 import 'dart:convert';
@@ -42,6 +52,7 @@ import 'api_de_rastreo.dart';
 import 'cola_de_rastreo.dart';
 import 'configuracion_de_rastreo.dart';
 import 'lote.dart';
+import 'medidor_de_hilo.dart';
 
 /// Lo que pasó en un intento, para el diagnóstico.
 class ResultadoDelEmisor {
@@ -58,14 +69,31 @@ class ResultadoDelEmisor {
       'próximo: $proximoIntento)';
 }
 
-/// La espera tras [fallos] fallos seguidos (1 = el primero). Pura, para poder probarla.
-Duration esperaTrasFallo(int fallos, {math.Random? azar}) {
+/// El TOPE de la espera tras [fallos] fallos seguidos (1 = el primero): 30 s, 1, 2, 4…
+/// minutos, con techo de 30 min. Es el techo del azar, no la espera.
+Duration topeTrasFallo(int fallos) {
   const base = 30; // segundos
   const techo = 30 * 60;
   final exp = fallos <= 1 ? 0 : (fallos - 1).clamp(0, 16);
-  final seg = math.min(techo, base * math.pow(2, exp).toInt());
-  final factor = 0.8 + (azar ?? math.Random()).nextDouble() * 0.4; // ±20 %
-  return Duration(milliseconds: (seg * 1000 * factor).round());
+  return Duration(seconds: math.min(techo, base * math.pow(2, exp).toInt()));
+}
+
+/// Un azar uniforme en [0, max], en milisegundos.
+Duration _azarHasta(Duration max, math.Random azar) =>
+    Duration(milliseconds: (azar.nextDouble() * max.inMilliseconds).round());
+
+/// La espera tras [fallos] fallos seguidos, con JITTER COMPLETO: uniforme entre 0 y
+/// [topeTrasFallo] (contrato §4.12). Nunca ±20 %. Pura, para poder probarla.
+Duration esperaTrasFallo(int fallos, {math.Random? azar}) =>
+    _azarHasta(topeTrasFallo(fallos), azar ?? math.Random());
+
+/// La espera cuando el servidor dijo `Retry-After`: lo que pidió (con techo) más un azar
+/// entre 0 y eso mismo. Sin el azar, un millón que recibieron `Retry-After: 60` en el
+/// mismo segundo volverían todos en el mismo segundo 60.
+Duration esperaTrasRetryAfter(Duration retryAfter,
+    {Duration techo = const Duration(hours: 1), math.Random? azar}) {
+  final ra = retryAfter > techo ? techo : (retryAfter.isNegative ? Duration.zero : retryAfter);
+  return ra + _azarHasta(ra, azar ?? math.Random());
 }
 
 class EmisorDeLotes {
@@ -80,6 +108,7 @@ class EmisorDeLotes {
     required this.registrarClave,
     DateTime Function()? ahora,
     math.Random? azar,
+    this.ventanaDeRecuperacion = const Duration(seconds: 15),
   })  : _ahora = ahora ?? DateTime.now,
         _azar = azar ?? math.Random();
 
@@ -104,6 +133,9 @@ class EmisorDeLotes {
   final DateTime Function() _ahora;
   final math.Random _azar;
 
+  /// El azar corto de [reiniciarEspera]: el próximo intento cae entre 0 y esto.
+  final Duration ventanaDeRecuperacion;
+
   /// Techo del `Retry-After` que se obedece. Un servidor que pide un día de espera está
   /// roto, y obedecerlo dejaría el teléfono un día sin mandar.
   static const techoRetryAfter = Duration(hours: 1);
@@ -123,14 +155,23 @@ class EmisorDeLotes {
   DateTime? get proximoIntento => _noAntesDe;
   int get fallosSeguidos => _fallosSeguidos;
 
-  /// Olvida la espera por fallos de red. Se llama cuando vuelve la conectividad: la
-  /// espera existía porque no había red, y ya hay. NO olvida un `Retry-After`.
   bool _esperaEsPorRetryAfter = false;
-  void volvioLaRed() {
-    if (!_esperaEsPorRetryAfter) {
-      _noAntesDe = null;
-      _fallosSeguidos = 0;
+
+  /// RECUPERACIÓN RÁPIDA. Se llama cuando vuelve la conectividad o la app pasa a primer
+  /// plano: olvida la espera creciente y pone el próximo intento a un azar de 0 a
+  /// [ventanaDeRecuperacion]. El azar existe porque la red vuelve a la vez para todos los
+  /// que estaban bajo la misma antena. NO olvida un `Retry-After` vigente.
+  ///
+  /// Devuelve cuándo es el próximo intento (o `null` si no había nada esperando).
+  DateTime? reiniciarEspera() {
+    if (_esperaEsPorRetryAfter) {
+      final n = _noAntesDe;
+      if (n != null && _ahora().isBefore(n)) return n;
+      _esperaEsPorRetryAfter = false;
     }
+    _fallosSeguidos = 0;
+    _noAntesDe = _ahora().add(_azarHasta(ventanaDeRecuperacion, _azar));
+    return _noAntesDe;
   }
 
   /// Un intento. [forzar] arma un lote con lo que haya aunque no se haya cumplido ni el
@@ -184,7 +225,8 @@ class EmisorDeLotes {
     }
 
     _envios.add(_ahora());
-    final r = await api.enviarLote(lote.cuerpo);
+    final cuerpo = lote.cuerpo;
+    final r = await MedidorDeHilo.asincrono('red.POST lote', () => api.enviarLote(cuerpo));
     await cola.anotarIntento(lote.loteId, r.codigo, r.cuerpo ?? r.error,
         _ahora().millisecondsSinceEpoch);
     await cola.escribir(
@@ -244,7 +286,7 @@ class EmisorDeLotes {
     _fallosSeguidos++;
     Duration espera;
     if (retryAfter != null) {
-      espera = retryAfter > techoRetryAfter ? techoRetryAfter : retryAfter;
+      espera = esperaTrasRetryAfter(retryAfter, techo: techoRetryAfter, azar: _azar);
       _esperaEsPorRetryAfter = true;
     } else {
       espera = esperaTrasFallo(_fallosSeguidos, azar: _azar);

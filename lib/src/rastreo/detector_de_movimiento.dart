@@ -55,8 +55,8 @@ class Lectura {
     required this.lon,
     required this.acc,
     required this.v,
-    this.h = 0,
-    this.alt = 0,
+    this.h = -1,
+    this.alt = -9999,
     this.mock = false,
   });
 
@@ -67,7 +67,11 @@ class Lectura {
 
   /// m/s, o negativo si el sistema no la sabe.
   final double v;
+
+  /// Rumbo en grados; -1 si el sistema no lo da (§4.12).
   final double h;
+
+  /// Altitud en metros; -9999 si el sistema no la da (§4.12).
   final double alt;
   final bool mock;
 }

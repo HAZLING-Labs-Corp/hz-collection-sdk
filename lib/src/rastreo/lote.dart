@@ -22,6 +22,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'canonico.dart';
+import 'medidor_de_hilo.dart';
 import 'punto.dart';
 
 /// Los dos relojes del aparato además del de la pared (PM-024 §11.6).
@@ -109,18 +110,25 @@ Future<LoteArmado> armarLote({
   if (puntos.isEmpty) {
     throw ArgumentError('Un lote sin puntos no se arma: no prueba nada y gasta un request.');
   }
-  final sinFirmar = cuerpoSinFirmar(
-    instalacionId: instalacionId,
-    loteId: loteId,
-    claveId: firmador.claveId,
-    hashAnterior: hashAnterior,
-    reloj: reloj,
-    puntos: puntos,
-  );
-  final canonico = jsonCanonico(sinFirmar);
-  final hash = sha256Hex(canonico);
-  final firma = await firmador.firmar(utf8.encode(canonico));
-  final cuerpo = jsonCanonico({...sinFirmar, 'hash': hash, 'firma': firma});
+  // Lo de Dart va de corrido en el hilo principal (hilos fusionados): se mide como bloqueo.
+  // Medido en el emulador con 40 puntos: ver RESUMEN-A2 §4. La firma es nativa y va en un
+  // hilo propio (RastreoNativo.kt / .swift): acá sólo se espera.
+  final (sinFirmar, canonico, hash) = MedidorDeHilo.sincrono('lote.canonico+sha256(${puntos.length})', () {
+    final m = cuerpoSinFirmar(
+      instalacionId: instalacionId,
+      loteId: loteId,
+      claveId: firmador.claveId,
+      hashAnterior: hashAnterior,
+      reloj: reloj,
+      puntos: puntos,
+    );
+    final c = jsonCanonico(m);
+    return (m, c, sha256Hex(c));
+  });
+  final firma = await MedidorDeHilo.asincrono(
+      'lote.firmar(nativo)', () => firmador.firmar(utf8.encode(canonico)));
+  final cuerpo = MedidorDeHilo.sincrono(
+      'lote.cuerpoFinal', () => jsonCanonico({...sinFirmar, 'hash': hash, 'firma': firma}));
   var min = puntos.first.t, max = puntos.first.t;
   for (final p in puntos) {
     if (p.t < min) min = p.t;

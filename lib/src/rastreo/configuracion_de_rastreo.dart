@@ -21,6 +21,7 @@
 /// aparatos es un ataque contra nuestra propia ingesta.
 library;
 
+import '../politica.dart';
 import 'cadencia.dart';
 
 class ConfiguracionDeRastreo {
@@ -32,6 +33,9 @@ class ConfiguracionDeRastreo {
     this.lotePuntos = 40,
     this.estadoForzado,
     this.cadencia = const [],
+    this.permiso = permisoPorOmision,
+    this.despertarSeg = 3,
+    this.despertarAceleracion = 1.0,
   });
 
   /// Si hay algo que medir. Sin perfil vigente, el servicio manda `false`.
@@ -57,6 +61,58 @@ class ConfiguracionDeRastreo {
 
   /// La tabla de cadencia, en orden. Vacía → [FilaDeCadencia.respaldo].
   final List<FilaDeCadencia> cadencia;
+
+  /// CL-36 · cuándo y cómo se pide el permiso de ubicación: la MISMA política que Collection ya
+  /// usa para las notificaciones (`politica.dart`): la decide el comercio desde su consola, viaja
+  /// con la configuración y la app la lee sin código propio. Si el servidor no la manda: al abrir,
+  /// con pregunta blanda.
+  final PoliticaDeNotificaciones permiso;
+
+  /// CL-37 · despertar por movimiento del teléfono: quieto, con el acelerómetro (sin gravedad)
+  /// por encima de [despertarAceleracion] m/s² durante [despertarSeg] segundos seguidos, el SDK
+  /// enciende el GPS preciso. Dato del perfil, no constante: mientras se desarrolla, 3 s.
+  final int despertarSeg;
+  final double despertarAceleracion;
+
+  static const pisoDespertarSeg = 1;
+  static const techoDespertarSeg = 60;
+
+  /// Los textos de la pregunta blanda cuando el comercio no manda los suyos (los de
+  /// `TextosDeLaPregunta.predeterminados` hablan de avisos, no de ubicación).
+  static const textosDeUbicacion = TextosDeLaPregunta(
+    titulo: '¿Registramos tu recorrido?',
+    cuerpo: 'Usamos tu ubicación, también con la app cerrada, para registrar por dónde vas. '
+        'Se apaga sola cuando te detienes.',
+    aceptar: 'Sí, registrar',
+    ahoraNo: 'Ahora no',
+  );
+
+  static const permisoPorOmision = PoliticaDeNotificaciones(
+    momento: MomentoDelPermiso.arranque,
+    preguntaBlanda: true,
+    textos: textosDeUbicacion,
+  );
+
+  static PoliticaDeNotificaciones _permisoDesde(Object? crudo) {
+    if (crudo is! Map) return permisoPorOmision;
+    final j = Map<String, dynamic>.from(crudo);
+    final p = PoliticaDeNotificaciones.fromJson(j);
+    final traeTextos = j['textos'] is Map && (j['textos'] as Map).isNotEmpty;
+    return PoliticaDeNotificaciones(
+      momento: p.momento,
+      obligatorio: p.obligatorio,
+      preguntaBlanda: j.containsKey('preguntaBlanda') ? p.preguntaBlanda : true,
+      reintentarCadaDias: p.reintentarCadaDias,
+      textos: traeTextos
+          ? TextosDeLaPregunta(
+              titulo: (j['textos']['titulo'] as String?) ?? textosDeUbicacion.titulo,
+              cuerpo: (j['textos']['cuerpo'] as String?) ?? textosDeUbicacion.cuerpo,
+              aceptar: (j['textos']['aceptar'] as String?) ?? textosDeUbicacion.aceptar,
+              ahoraNo: (j['textos']['ahoraNo'] as String?) ?? textosDeUbicacion.ahoraNo,
+            )
+          : textosDeUbicacion,
+    );
+  }
 
   static const apagada = ConfiguracionDeRastreo();
 
@@ -96,6 +152,14 @@ class ConfiguracionDeRastreo {
                 if (f is Map) FilaDeCadencia.fromJson(Map<String, dynamic>.from(f)),
             ]
           : const [],
+      permiso: _permisoDesde(j['permiso']),
+      despertarSeg: j['despertar'] is Map
+          ? ((((j['despertar'] as Map)['seg']) is num ? ((j['despertar'] as Map)['seg'] as num).round() : 3)
+              .clamp(pisoDespertarSeg, techoDespertarSeg))
+          : 3,
+      despertarAceleracion: j['despertar'] is Map && (j['despertar'] as Map)['aceleracion'] is num
+          ? (((j['despertar'] as Map)['aceleracion'] as num).toDouble()).clamp(0.3, 10.0)
+          : 1.0,
     );
   }
 
@@ -107,6 +171,8 @@ class ConfiguracionDeRastreo {
         'arranqueKmh': arranqueKmh,
         'lotePuntos': lotePuntos,
         'estadoForzado': estadoForzado,
+        'permiso': permiso.toJson(),
+        'despertar': {'seg': despertarSeg, 'aceleracion': despertarAceleracion},
         'cadencia': [for (final f in cadencia) {...f.toJson(), 'si': _siCrudo(f.si)}],
       };
 
