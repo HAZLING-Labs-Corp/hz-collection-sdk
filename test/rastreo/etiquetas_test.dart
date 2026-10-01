@@ -105,6 +105,30 @@ void main() {
       });
     });
 
+    test('la red: sin etiqueta propia, escucha las AJENAS en búsqueda y las informa con su busquedaId', () {
+      fakeAsync((f) {
+        const bq = 'bq_0123456789abcdef01234567';
+        final c = ConfiguracionDeEtiquetas.fromJson({
+          'lista': [],
+          'busqueda': [
+            {'busquedaId': bq, 'tipo': 'ibeacon', 'uuid': uuid, 'major': 100, 'minor': 8},
+            {'busquedaId': 'no-vale', 'tipo': 'ibeacon', 'uuid': uuid, 'major': 1, 'minor': 1},
+          ],
+        });
+        expect(c.hayQueEscuchar, isTrue, reason: 'sólo con búsquedas también se escucha');
+        expect(c.busqueda.map((e) => e.etiquetaId), [bq], reason: 'el id mal formado no entra');
+        expect(ConfiguracionDeEtiquetas.fromJson(c.toJson()).busqueda.single.etiquetaId, bq, reason: 'sobrevive al disco');
+        final esc = EscanerFalso()..anuncios.addAll([ibeacon(100, 8, -77), ibeacon(100, 8, -70), ibeacon(100, 7, -50)]);
+        final v = VigiaDeEtiquetas(escaner: esc, configuracion: () => c, rodando: () => true, ahora: () => DateTime.fromMillisecondsSinceEpoch(1000));
+        v.iniciar();
+        f.elapse(const Duration(seconds: 40));
+        final a = v.tomarHasta(5000).single;
+        expect((a.busquedaId, a.etiquetaId, a.rssi), (bq, null, -70));
+        expect(a.toJson(), {'t': 1000, 'busquedaId': bq, 'rssi': -70}, reason: 'viaja sin etiquetaId');
+        v.detener();
+      });
+    });
+
     test('Bluetooth apagado: se anota y se sigue', () {
       fakeAsync((f) {
         final problemas = <String>[];

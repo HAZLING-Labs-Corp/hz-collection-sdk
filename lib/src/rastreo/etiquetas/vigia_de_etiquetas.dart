@@ -67,6 +67,8 @@ class VigiaDeEtiquetas {
 
   /// Escucha `escaneoSeg` y deja un avistamiento por etiqueta (el de más señal).
   Future<void> ventana(ConfiguracionDeEtiquetas c) {
+    // la propia gana si la misma huella también estuviera en búsqueda (no debería: el servidor la saca)
+    final enBusqueda = {for (final e in c.busqueda) identificadorDe(e): e.etiquetaId};
     final porHuella = {for (final e in c.lista) identificadorDe(e): e.etiquetaId};
     final mejor = <String, Avistamiento>{};
     final listo = Completer<void>();
@@ -89,11 +91,15 @@ class VigiaDeEtiquetas {
       _escucha = escaner.escuchar().listen((a) {
         if (a.rssi < c.rssiMin) return;
         final h = identificadorDelAnuncio(a);
-        final id = h == null ? null : porHuella[h];
-        if (id == null) return;
-        final previo = mejor[id];
+        if (h == null) return;
+        final propia = porHuella[h];
+        final ajena = propia == null ? enBusqueda[h] : null;
+        final clave = propia ?? (ajena == null ? null : 'bq:$ajena');
+        if (clave == null) return;
+        final previo = mejor[clave];
         if (previo == null || a.rssi > previo.rssi) {
-          mejor[id] = Avistamiento(t: _ahora().millisecondsSinceEpoch, etiquetaId: id, rssi: a.rssi);
+          final t = _ahora().millisecondsSinceEpoch;
+          mejor[clave] = propia != null ? Avistamiento(t: t, etiquetaId: propia, rssi: a.rssi) : Avistamiento(t: t, busquedaId: ajena, rssi: a.rssi);
         }
       }, onError: (Object e) {
         alProblema?.call('etiquetas: el escaneo BLE falló ($e)');

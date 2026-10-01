@@ -72,9 +72,14 @@ class ConfiguracionDeEtiquetas {
     this.escaneoSeg = 8,
     this.cadaSeg = 30,
     this.rssiMin = -95,
+    this.busqueda = const [],
   });
 
   final List<EtiquetaBle> lista;
+
+  /// Etiquetas AJENAS en búsqueda (01-10-2026, «me robaron la moto»): también se escuchan y, si se
+  /// oyen, se informan con su `busquedaId` (aquí en `etiquetaId`). Sólo el radio: nunca de quién son.
+  final List<EtiquetaBle> busqueda;
 
   /// Duración de cada ventana de escaneo (2..60 s).
   final int escaneoSeg;
@@ -87,7 +92,9 @@ class ConfiguracionDeEtiquetas {
 
   static const ninguna = ConfiguracionDeEtiquetas();
 
-  bool get hayQueEscuchar => lista.isNotEmpty;
+  bool get hayQueEscuchar => lista.isNotEmpty || busqueda.isNotEmpty;
+
+  static final _busquedaId = RegExp(r'^bq_[0-9a-f]{24}$');
 
   /// Lo que falta o no se entiende cae hacia abajo: sin lista, no se escanea; números acotados
   /// (un `cadaSeg: 0` sería escaneo continuo, y eso es batería).
@@ -102,9 +109,18 @@ class ConfiguracionDeEtiquetas {
     final lista = <EtiquetaBle>[
       if (l is List) ...l.take(10).map(EtiquetaBle.fromJson).whereType<EtiquetaBle>(),
     ];
+    final b = crudo['busqueda'];
+    final busqueda = <EtiquetaBle>[
+      if (b is List)
+        ...b.take(50)
+            .where((x) => x is Map && x['busquedaId'] is String && _busquedaId.hasMatch(x['busquedaId'] as String))
+            .map((x) => EtiquetaBle.fromJson({...(x as Map), 'etiquetaId': x['busquedaId']}))
+            .whereType<EtiquetaBle>(),
+    ];
     final escaneo = n('escaneoSeg', 8, 2, 60);
     return ConfiguracionDeEtiquetas(
       lista: lista,
+      busqueda: busqueda,
       escaneoSeg: escaneo,
       cadaSeg: n('cadaSeg', 30, escaneo < 10 ? 10 : escaneo, 600),
       rssiMin: n('rssiMin', -95, -127, -30),
@@ -113,19 +129,22 @@ class ConfiguracionDeEtiquetas {
 
   Map<String, dynamic> toJson() => {
         'lista': [for (final e in lista) e.toJson()],
+        if (busqueda.isNotEmpty) 'busqueda': [for (final e in busqueda) (e.toJson()..remove('etiquetaId'))..['busquedaId'] = e.etiquetaId],
         'escaneoSeg': escaneoSeg,
         'cadaSeg': cadaSeg,
         'rssiMin': rssiMin,
       };
 }
 
-/// Lo que se le informa al servidor: cuándo, qué etiqueta y con cuánta señal.
+/// Lo que se le informa al servidor: cuándo, qué etiqueta y con cuánta señal. De una etiqueta
+/// propia va `etiquetaId`; de una ajena en búsqueda, `busquedaId` (uno de los dos).
 class Avistamiento {
-  const Avistamiento({required this.t, required this.etiquetaId, required this.rssi});
+  const Avistamiento({required this.t, this.etiquetaId, this.busquedaId, required this.rssi}) : assert((etiquetaId == null) != (busquedaId == null));
   final int t;
-  final String etiquetaId;
+  final String? etiquetaId;
+  final String? busquedaId;
   final int rssi;
-  Map<String, dynamic> toJson() => {'t': t, 'etiquetaId': etiquetaId, 'rssi': rssi};
+  Map<String, dynamic> toJson() => {'t': t, if (etiquetaId != null) 'etiquetaId': etiquetaId, if (busquedaId != null) 'busquedaId': busquedaId, 'rssi': rssi};
 }
 
 /// Un anuncio BLE crudo, tal como lo da cualquier escáner: el dato de fabricante (con los 2
