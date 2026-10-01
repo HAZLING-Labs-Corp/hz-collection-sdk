@@ -77,6 +77,9 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
     _cambios?.cancel();
     _sucesos?.cancel();
     _refresco?.cancel();
+    // El rastreo sigue corriendo (al volver, `Rastreo.abrir` devuelve el mismo); el historial
+    // de esta pantalla deja de escuchar, o al volver se grabaría cada punto dos veces.
+    unawaited(_historial?.cerrar());
     super.dispose();
   }
 
@@ -296,6 +299,7 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
       });
 
   Future<void> _cambiarCaptura(String c) => _hacer(() async {
+        if (c == _captura) return; // sólo se rearma si de verdad cambia la captura
         _captura = c;
         (await SharedPreferences.getInstance()).setString(_claveCaptura, c);
         await _armar();

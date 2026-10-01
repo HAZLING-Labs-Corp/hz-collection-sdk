@@ -196,7 +196,9 @@ class Rastreo {
     required this.instalacionId,
     required this.paquete,
     required SharedPreferences prefs,
-  }) : _prefs = prefs {
+    String firma = '',
+  })  : _prefs = prefs,
+        _firma = firma {
     final guardada = _prefs.getString(_claveConfig);
     if (guardada != null) {
       try {
@@ -220,6 +222,10 @@ class Rastreo {
   final String instalacionId;
   final String paquete;
   final SharedPreferences _prefs;
+
+  /// Con qué se abrió (llave, url, ingesta, captura, cliente): [abrir] con lo mismo devuelve la
+  /// instancia viva en vez de armar otra.
+  final String _firma;
 
   ConfiguracionDeRastreo _config = ConfiguracionDeRastreo.apagada;
   ConfiguracionDeRastreo get configuracion => _config;
@@ -294,6 +300,12 @@ class Rastreo {
     http.Client? cliente,
     ColaDeRastreo? cola,
   }) async {
+    // LA MISMA INSTANCIA SI YA CORRE CON LO MISMO: volver a entrar a una pantalla no tiene que
+    // rearmar la captura. Rearmarla en pleno viaje la arrancaba en quieto (≈1 min sin puntos
+    // hasta reconfirmar) y el servidor partía el viaje en dos tramos (medido el 2026-10-01).
+    final firma = _firmaDe(llave, url, urlIngesta, captura?.nombre ?? 'propia', cliente);
+    final vivo = _vivo;
+    if (vivo != null && vivo._firma == firma) return vivo;
     final prefs = await SharedPreferences.getInstance();
     final instalacionId = await ConfigStore().leerOCrearInstalacionId();
     final paquete = (await PackageInfo.fromPlatform()).packageName;
@@ -305,8 +317,21 @@ class Rastreo {
       instalacionId: instalacionId,
       paquete: paquete,
       prefs: prefs,
+      firma: firma,
     );
   }
+
+  static final Expando<int> _idDelCliente = Expando();
+  static int _clientes = 0;
+
+  static String _firmaDe(String llave, String url, String? ingesta, String captura, http.Client? cliente) {
+    final c = cliente == null ? 0 : (_idDelCliente[cliente] ??= ++_clientes);
+    return jsonEncode([llave, url, ingesta, captura, c]);
+  }
+
+  /// Sólo para pruebas: la instancia que el proceso tiene corriendo (la que fija [iniciar]).
+  @visibleForTesting
+  static set vivoParaPruebas(Rastreo? r) => _vivo = r;
 
   String? get sujetoId => _sujetoId;
 
@@ -450,6 +475,13 @@ class Rastreo {
       } catch (_) {}
     }
     _vivo = this;
+    final relevo = _relevo;
+    _relevo = null;
+    final c = captura;
+    if (relevo != null && c is CapturaPropia && !c.activa &&
+        DateTime.now().millisecondsSinceEpoch - relevo.$2 < _ventanaDeRelevo.inMilliseconds) {
+      c.continuarDesde = relevo.$1;
+    }
     unawaited(_reenviarAparatoSiCambioElSdk());
     _clave ??= await ClaveDelAparato.asegurar();
     _emisor ??= EmisorDeLotes(
@@ -524,6 +556,8 @@ class Rastreo {
 
   Future<void> detener() async {
     if (identical(_vivo, this)) _vivo = null;
+    // El relevo: si otra captura arranca enseguida (se cambió de captura), sigue el viaje.
+    _relevo = (captura.estado, DateTime.now().millisecondsSinceEpoch);
     await captura.detener();
     await _vigia?.detener();
     _reloj?.cancel();
@@ -582,6 +616,11 @@ class Rastreo {
   /// Sin red o con error no se reintenta: la siguiente ya lleva una posición más nueva.
   /// El único `Rastreo` de este proceso que está corriendo (ver `iniciar`).
   static Rastreo? _vivo;
+
+  /// El estado en que quedó la última captura detenida, y cuándo. Una captura que arranca
+  /// menos de [_ventanaDeRelevo] después sigue ese viaje (ver `CapturaPropia.continuarDesde`).
+  static (EstadoDeMovimiento, int)? _relevo;
+  static const _ventanaDeRelevo = Duration(minutes: 1);
 
   Timer? _relojDePresencia;
 

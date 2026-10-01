@@ -348,6 +348,21 @@ class DetectorDeMovimiento {
     return _decision();
   }
 
+  /// Sigue un viaje que venía midiendo otra captura (se cambió de captura en pleno viaje): se
+  /// arranca en RODANDO, con un tramo nuevo, en vez de en QUIETO. Sin esto el cambio parte el
+  /// viaje: un minuto quieto hasta reconfirmar, y el servidor abre otro tramo.
+  Decision continuarRodando(int t) {
+    estado = EstadoDeMovimiento.rodando;
+    tramo++;
+    _confirmaciones = 0;
+    _desdeConfirmando = null;
+    _ultimoMovimiento = t;
+    _reposo = null;
+    _ultimaGrabada = null;
+    _filaCambio = _evaluar(t);
+    return _decision(cambio: true, motivo: 'sigue el viaje de la captura anterior');
+  }
+
   Decision _aConfirmando(int t, String motivo) {
     estado = EstadoDeMovimiento.confirmando;
     // el tramo (viaje) nace acá: los puntos grabados mientras se confirma son suyos

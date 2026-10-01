@@ -159,6 +159,10 @@ class CapturaPropia implements CapturaDeRastreo {
   @override
   FilaDeCadencia get cadencia => _detector?.fila ?? FilaDeCadencia.respaldo;
 
+  /// Si se fija antes de [iniciar], la captura arranca en ese estado en vez de en QUIETO (hoy
+  /// sólo RODANDO cuenta): la pone `Rastreo` cuando releva a otra captura en pleno viaje.
+  EstadoDeMovimiento? continuarDesde;
+
   @override
   Future<String?> iniciar(ConfiguracionDeRastreo config) async {
     if (_activa) {
@@ -199,7 +203,13 @@ class CapturaPropia implements CapturaDeRastreo {
     // —la hora cruza las 22:00, el quieto pasa de 5 a 30 min—. Es una cuenta en memoria.
     _tic = Timer.periodic(const Duration(seconds: 5),
         (_) => _aplicar(_detector!.tic(DateTime.now().millisecondsSinceEpoch)));
-    _eventos.add(const CambioDeEstado(EstadoDeMovimiento.quieto, 'arrancó'));
+    final desde = continuarDesde;
+    continuarDesde = null;
+    if (desde == EstadoDeMovimiento.rodando) {
+      await _aplicar(_detector!.continuarRodando(DateTime.now().millisecondsSinceEpoch));
+    } else {
+      _eventos.add(const CambioDeEstado(EstadoDeMovimiento.quieto, 'arrancó'));
+    }
     return null;
   }
 
