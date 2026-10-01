@@ -18,6 +18,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/services.dart';
 
 import 'detector_de_movimiento.dart';
@@ -122,6 +123,29 @@ class EnergiaDelAparato {
     try {
       await _canal.invokeMethod('energia.abrirAjustes');
     } catch (_) {}
+  }
+}
+
+/// El permiso para escuchar las etiquetas BLE del vehículo (Android 12+: `BLUETOOTH_SCAN`,
+/// «Dispositivos cercanos»). En iPhone lo pide el sistema al primer escaneo: devuelve `true`.
+class EtiquetasDelAparato {
+  static Future<bool> tienePermiso() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return true;
+    try {
+      return await _canal.invokeMethod<bool>('etiquetas.permiso') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Pide el permiso. Devuelve si quedó concedido. Sin él el rastreo sigue: sólo no hay avistamientos.
+  static Future<bool> pedirPermiso() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return true;
+    try {
+      return await _canal.invokeMethod<bool>('etiquetas.pedirPermiso') ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 }
 

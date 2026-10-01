@@ -140,7 +140,7 @@ export 'src/rastreo/cola_de_rastreo.dart' show Hueco;
 export 'src/rastreo/emisor_de_lotes.dart' show ResultadoDelEmisor;
 export 'src/rastreo/medidor_de_hilo.dart' show MedidorDeHilo;
 export 'src/rastreo/nativo_de_rastreo.dart'
-    show EnergiaDelAparato, ActividadDelAparato, ClaveDelAparato;
+    show EnergiaDelAparato, ActividadDelAparato, EtiquetasDelAparato, ClaveDelAparato;
 // Tramo 3.3: el suceso que la app recibe en `Rastreo.sucesos` («¿estás bien?»), los umbrales
 // del golpe que llegan en la configuración, y el motivo de un rato sin GPS del diagnóstico.
 export 'src/rastreo/golpe/sucesos_del_aparato.dart' show SucesoDelAparato, TipoDeSuceso;

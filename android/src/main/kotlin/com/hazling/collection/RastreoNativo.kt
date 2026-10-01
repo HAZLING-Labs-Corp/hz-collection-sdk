@@ -63,6 +63,7 @@ class RastreoNativo(
 
     var actividad: Activity? = null
     private var permisoPendiente: MethodChannel.Result? = null
+    private var permisoDeEtiquetasPendiente: MethodChannel.Result? = null
     private var sumidero: EventChannel.EventSink? = null
     private var receptor: BroadcastReceiver? = null
     private var intencion: PendingIntent? = null
@@ -138,6 +139,8 @@ class RastreoNativo(
                 }
                 "actividad.permiso" -> resultado.success(tienePermisoDeActividad())
                 "actividad.pedirPermiso" -> pedirPermisoDeActividad(resultado)
+                "etiquetas.permiso" -> resultado.success(tienePermisoDeEtiquetas())
+                "etiquetas.pedirPermiso" -> pedirPermisoDeEtiquetas(resultado)
                 else -> resultado.notImplemented()
             }
         } catch (e: Exception) {
@@ -266,9 +269,38 @@ class RastreoNativo(
         a.requestPermissions(arrayOf(Manifest.permission.ACTIVITY_RECOGNITION), CODIGO_PERMISO)
     }
 
+    /**
+     * ETIQUETAS BLE: escanear pide `BLUETOOTH_SCAN` desde Android 12 (grupo «Dispositivos
+     * cercanos»). Antes de 12 alcanza con la ubicación que el rastreo ya pide. La app tiene que
+     * declararlo SIN `neverForLocation`: con esa marca Android filtra los beacons del escaneo.
+     */
+    private fun tienePermisoDeEtiquetas(): Boolean =
+        Build.VERSION.SDK_INT < 31 ||
+            contexto.checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+
+    private fun declaroPermisoDeEtiquetas(): Boolean = try {
+        val info = contexto.packageManager.getPackageInfo(contexto.packageName, PackageManager.GET_PERMISSIONS)
+        info.requestedPermissions?.contains(Manifest.permission.BLUETOOTH_SCAN) == true
+    } catch (e: Exception) {
+        false
+    }
+
+    private fun pedirPermisoDeEtiquetas(resultado: MethodChannel.Result) {
+        if (tienePermisoDeEtiquetas()) return resultado.success(true)
+        val a = actividad
+        if (a == null || !declaroPermisoDeEtiquetas()) return resultado.success(false)
+        permisoDeEtiquetasPendiente = resultado
+        a.requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_SCAN), CODIGO_PERMISO_ETIQUETAS)
+    }
+
     override fun onRequestPermissionsResult(
         codigo: Int, permisos: Array<out String>, concedidos: IntArray
     ): Boolean {
+        if (codigo == CODIGO_PERMISO_ETIQUETAS) {
+            permisoDeEtiquetasPendiente?.success(concedidos.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+            permisoDeEtiquetasPendiente = null
+            return true
+        }
         if (codigo != CODIGO_PERMISO) return false
         permisoPendiente?.success(concedidos.firstOrNull() == PackageManager.PERMISSION_GRANTED)
         permisoPendiente = null
@@ -377,5 +409,6 @@ class RastreoNativo(
 
     companion object {
         private const val CODIGO_PERMISO = 7302
+        private const val CODIGO_PERMISO_ETIQUETAS = 7303
     }
 }
