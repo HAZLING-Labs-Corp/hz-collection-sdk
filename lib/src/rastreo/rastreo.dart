@@ -48,8 +48,11 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api_client.dart';
+import '../device_info.dart';
+import '../version.dart';
 import '../remote_config.dart';
 import '../sujeto.dart';
+import 'aparato_del_rastreo.dart';
 import 'api_de_rastreo.dart';
 import 'cadencia.dart';
 import 'captura.dart';
@@ -304,6 +307,33 @@ class Rastreo {
 
   String? get sujetoId => _sujetoId;
 
+  /// Manda la instalación con su aparato (marca, modelo, sistema, emulador, SDK) y anota con
+  /// qué versión del SDK se mandó, para volver a mandarlo cuando el SDK cambie de versión.
+  Future<void> _mandarAparato(String sujetoId) async {
+    DatosDelDispositivo? d;
+    try {
+      d = await DatosDelDispositivo.recolectar();
+    } catch (_) {}
+    await apiDelNucleo.registrarInstalacion(
+      instalacionId: instalacionId,
+      aparato: aparatoDelRastreo(d, plataforma: defaultTargetPlatform.name),
+      sujetoId: sujetoId,
+    );
+    await _prefs.setString(claveDeVersionDelAparato, versionDelSdk);
+  }
+
+  /// AL CAMBIAR DE VERSIÓN: si este aparato ya está enrolado y el aparato se mandó con otro SDK
+  /// (o nunca), se vuelve a mandar. Nunca rompe el arranque.
+  Future<void> _reenviarAparatoSiCambioElSdk() async {
+    final s = _sujetoId;
+    if (s == null || !hayQueReenviarElAparato(_prefs.getString(claveDeVersionDelAparato))) return;
+    try {
+      await _mandarAparato(s);
+    } catch (e) {
+      debugPrint('HzRastreo · no se pudo reenviar el aparato: $e');
+    }
+  }
+
   /// ENROLAR: la clave, la instalación, el sujeto y el registro de la pública.
   ///
   /// Idempotente: la clave se crea sólo si no existe, y los tres POST son altas-o-
@@ -312,11 +342,7 @@ class Rastreo {
     final clave = _clave = await ClaveDelAparato.asegurar();
     String? errInstalacion, errSujeto, errClave;
     try {
-      await apiDelNucleo.registrarInstalacion(
-        instalacionId: instalacionId,
-        aparato: {'plataforma': defaultTargetPlatform.name},
-        sujetoId: sujetoId,
-      );
+      await _mandarAparato(sujetoId);
     } catch (e) {
       errInstalacion = '$e';
     }
@@ -421,6 +447,7 @@ class Rastreo {
       } catch (_) {}
     }
     _vivo = this;
+    unawaited(_reenviarAparatoSiCambioElSdk());
     _clave ??= await ClaveDelAparato.asegurar();
     _emisor ??= EmisorDeLotes(
       cola: cola,
