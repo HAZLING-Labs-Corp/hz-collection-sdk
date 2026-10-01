@@ -4,7 +4,14 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'dart:async';
+
 import 'package:hz_collection_sdk/src/rastreo/api_de_rastreo.dart';
+import 'package:hz_collection_sdk/src/rastreo/cadencia.dart';
+import 'package:hz_collection_sdk/src/rastreo/captura.dart';
+import 'package:hz_collection_sdk/src/rastreo/rastreo.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hz_collection_sdk/src/rastreo/cola_de_rastreo.dart';
 import 'package:hz_collection_sdk/src/rastreo/configuracion_de_rastreo.dart';
 import 'package:hz_collection_sdk/src/rastreo/detector_de_movimiento.dart';
@@ -13,6 +20,26 @@ import 'package:hz_collection_sdk/src/rastreo/lote.dart';
 import 'package:hz_collection_sdk/src/rastreo/medio_del_viaje.dart';
 import 'package:hz_collection_sdk/src/rastreo/punto.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+/// Una captura que no abre nada: sólo hace falta que exista.
+class _Captura implements CapturaDeRastreo {
+  @override
+  String get nombre => 'prueba';
+  @override
+  Stream<EventoDeCaptura> get eventos => const Stream.empty();
+  @override
+  EstadoDeMovimiento estado = EstadoDeMovimiento.rodando;
+  @override
+  FilaDeCadencia get cadencia => FilaDeCadencia.respaldo;
+  @override
+  bool get activa => true;
+  @override
+  Future<String?> iniciar(ConfiguracionDeRastreo config) async => null;
+  @override
+  Future<void> actualizar(ConfiguracionDeRastreo config) async {}
+  @override
+  Future<void> detener() async {}
+}
 
 class _Firmador implements FirmadorDeLotes {
   @override
@@ -155,6 +182,52 @@ void main() {
 
       await cola.agregar(_p(_t0 + 500000), 2); // otro viaje, sin declarar
       expect(await medioDelUltimoLote(), isNull);
+    });
+  });
+
+  group('la causa medida en el emulador: otra instancia', () {
+    // Al volver a entrar a la pantalla, la app arma OTRO Rastreo (y el viejo se detiene, una sola
+    // captura viva por proceso). El medio vivía sólo en la memoria del viejo: el nuevo mandaba
+    // los puntos del mismo viaje sin medio y el diagnóstico decía «El del perfil».
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      PackageInfo.setMockInitialValues(
+          appName: 'a', packageName: 'p', version: '1', buildNumber: '1', buildSignature: '');
+    });
+
+    Future<Rastreo> abrir(ColaDeRastreo cola) => Rastreo.abrir(
+        llave: 'pk_prueba', url: 'http://api', captura: _Captura(), cola: cola,
+        cliente: MockClient((_) async => http.Response('{}', 202)));
+
+    test('la instancia nueva hereda el medio declarado, y null también se hereda', () async {
+      final cola = await ColaDeRastreo.abrir(
+          ruta: inMemoryDatabasePath, fabrica: databaseFactoryFfi, topePuntos: 100, topeBytes: 1 << 20);
+      final a = await abrir(cola);
+      a.declararMedio('dosRuedas');
+      await Future<void>.delayed(Duration.zero);
+      final b = await abrir(cola);
+      expect(b.medioDeclarado, 'dosRuedas');
+      b.declararMedio(null);
+      await Future<void>.delayed(Duration.zero);
+      expect((await abrir(cola)).medioDeclarado, isNull);
+      await cola.cerrar();
+    });
+
+    test('lo heredado sobrevive a la quietud con que arranca la captura nueva; rodar y parar lo olvida', () {
+      final a = MedioDelViaje()..declarar('dosRuedas', _quieto);
+      a.cambio(_confirmando, _t0);
+      a.cambio(_rodando, _t0 + 10000);
+      a.punto(_rodando, 12, _arranque); // la instancia vieja ya había visto rodar
+      final b = MedioDelViaje()..restaurar(a.guardar());
+      expect(b.cambio(_quieto, _t0 + 20000), isFalse, reason: 'el «arrancó» de la captura nueva');
+      expect(b.declarado, 'dosRuedas');
+      expect(b.paraLote(_t0 + 20000), 'dosRuedas');
+      b.cambio(_confirmando, _t0 + 30000);
+      b.cambio(_rodando, _t0 + 40000);
+      expect(b.cambio(_quieto, _t0 + 400000), isTrue);
+      final c = MedioDelViaje()..restaurar(b.guardar());
+      expect(c.declarado, isNull);
+      expect(c.paraLote(_t0 + 40000), 'dosRuedas', reason: 'el último lote del viaje, armado por otra');
     });
   });
 }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'detector_de_movimiento.dart';
 
 /// Cuánto dura el medio que la persona declaró (`Rastreo.declararMedio`).
@@ -26,6 +28,30 @@ class MedioDelViaje {
     _ultimo = estado;
     _delViajeTerminado = null;
     _finDelViajeTerminado = null;
+  }
+
+  /// Lo que sobrevive a la instancia: el medio declarado y el del viaje que acaba de terminar.
+  /// Una instancia nueva (la pantalla se abrió de nuevo, el proceso volvió) arranca su captura en
+  /// quieto; si el medio viviera sólo en memoria, la nueva lo perdería en pleno viaje (medido
+  /// el 2026-10-01 en el emulador: al volver a entrar a la pantalla, 31 de 31 puntos sin medio).
+  String guardar() => jsonEncode({
+        if (_declarado != null) 'declarado': _declarado,
+        if (_delViajeTerminado != null) 'terminado': _delViajeTerminado,
+        if (_finDelViajeTerminado != null) 'fin': _finDelViajeTerminado,
+      });
+
+  /// Retoma lo [guardar]do por otra instancia. Lo heredado cuenta como recién declarado: la
+  /// quietud con que arranca la captura nueva no lo borra; se olvida al rodar y quedar quieto.
+  void restaurar(String? guardado) {
+    if (guardado == null) return;
+    try {
+      final j = jsonDecode(guardado) as Map;
+      _declarado = j['declarado'] as String?;
+      _delViajeTerminado = j['terminado'] as String?;
+      _finDelViajeTerminado = (j['fin'] as num?)?.toInt();
+      _rodo = false;
+      _ultimo = EstadoDeMovimiento.quieto;
+    } catch (_) {}
   }
 
   /// Un punto grabado: en rodando y a [arranqueMs] o más, el aparato está rodando de verdad.

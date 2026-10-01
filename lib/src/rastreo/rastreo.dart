@@ -205,11 +205,13 @@ class Rastreo {
       } catch (_) {}
     }
     _sujetoId = _prefs.getString(_claveSujeto);
+    _medio.restaurar(_prefs.getString(_claveMedio));
   }
 
   static const _claveConfig = 'akpush.rastreo.config';
   static const _claveSujeto = 'akpush.rastreo.sujeto';
   static const _claveArranque = 'akpush.rastreo.arranque';
+  static const _claveMedio = 'akpush.rastreo.medio';
 
   final ApiDeRastreo api;
   final AkPushApi apiDelNucleo;
@@ -263,6 +265,7 @@ class Rastreo {
       throw ArgumentError.value(medio, 'medio', 'uno de ${mediosValidos.join(', ')}');
     }
     _medio.declarar(medio, captura.estado);
+    unawaited(_prefs.setString(_claveMedio, _medio.guardar()));
     _presenciaT = 0; // la próxima presencia sale ya, con el medio nuevo
     _cambios.add(null);
   }
@@ -692,6 +695,7 @@ class Rastreo {
         _motivo = motivo;
         _vigia?.moviendose(estado != EstadoDeMovimiento.quieto);
         if (_medio.cambio(estado, DateTime.now().millisecondsSinceEpoch)) {
+          unawaited(_prefs.setString(_claveMedio, _medio.guardar()));
           // Terminó el viaje declarado: el medio se olvida, y el último lote (que lleva puntos
           // del viaje) sale igual con su medio.
           _cambios.add(null);
