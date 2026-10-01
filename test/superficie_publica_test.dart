@@ -128,4 +128,16 @@ void main() {
     Future<SucesoDelAparato?> simular(Rastreo r) => r.simularGolpe();
     expect([sucesos, declarar, simular], hasLength(3));
   });
+
+  test('tramo 6.2: estado de la medición, consentimiento, medio por omisión y última posición', () {
+    expect(EstadoDeMedicion.values, hasLength(6));
+    expect(EstadoDelConsentimiento.values, hasLength(3));
+    EstadoDeMedicion estado(Rastreo r) => r.estadoDeMedicion;
+    Stream<EstadoDeMedicion> estados(Rastreo r) => r.estadosDeMedicion;
+    Future<EstadoDelConsentimiento> consentimiento(Rastreo r) => r.estadoDelConsentimiento();
+    Future<void> fijar(Rastreo r) => r.fijarMedioPorOmision('dosRuedas');
+    PuntoDeRastreo? ultima(Rastreo r) => r.ultimaPosicion;
+    Future<SucesoDelAparato?> fuerte(Rastreo r) => r.simularGolpe(confianzaMinima: 0.8);
+    expect([estado, estados, consentimiento, fijar, ultima, fuerte], hasLength(6));
+  });
 }

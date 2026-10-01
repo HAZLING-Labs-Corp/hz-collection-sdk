@@ -70,123 +70,11 @@ import 'lote.dart';
 import 'medidor_de_hilo.dart';
 import 'medio_del_viaje.dart';
 import 'nativo_de_rastreo.dart';
+import 'diagnostico_de_rastreo.dart';
+import 'estado_de_medicion.dart';
 
-/// Cómo salió cada paso del enrolamiento. Los tres son independientes: que el sujeto no se
-/// haya podido enlazar no impide registrar la clave, y se ve cuál falló.
-class ResultadoDeEnrolamiento {
-  const ResultadoDeEnrolamiento({
-    required this.instalacionId,
-    required this.claveId,
-    required this.enHardware,
-    required this.instalacion,
-    required this.sujeto,
-    required this.clave,
-  });
-
-  final String instalacionId;
-  final String claveId;
-  final bool enHardware;
-
-  /// `null` si salió bien; si no, por qué.
-  final String? instalacion;
-  final String? sujeto;
-  final String? clave;
-
-  bool get completo => instalacion == null && sujeto == null && clave == null;
-
-  @override
-  String toString() => completo
-      ? 'enrolado: $instalacionId · clave $claveId'
-      : 'enrolamiento incompleto — instalación: ${instalacion ?? 'bien'} · '
-          'sujeto: ${sujeto ?? 'bien'} · clave: ${clave ?? 'bien'}';
-}
-
-/// Todo lo que la pantalla de diagnóstico muestra, leído de una vez.
-class DiagnosticoDeRastreo {
-  const DiagnosticoDeRastreo({
-    required this.instalacionId,
-    required this.sujetoId,
-    required this.claveId,
-    required this.claveEnHardware,
-    required this.claveRegistrada,
-    required this.configuracion,
-    required this.configuracionCodigo,
-    required this.configuracionCuando,
-    required this.captura,
-    required this.capturaActiva,
-    required this.cadencia,
-    required this.estado,
-    required this.motivoDelEstado,
-    required this.permiso,
-    required this.gpsPrendido,
-    required this.energia,
-    required this.enCola,
-    required this.colaBytes,
-    required this.lotesAceptados,
-    required this.lotesRechazados,
-    required this.ultimoEnvio,
-    required this.loteEnVuelo,
-    required this.proximoIntento,
-    required this.fallosSeguidos,
-    required this.descartados,
-    required this.huecos,
-    required this.problemas,
-    this.motivoSinGps,
-    this.huecosConMotivo = const [],
-    this.medioDeclarado,
-    this.sucesosPendientes = 0,
-    this.ultimoSuceso,
-  });
-
-  final String instalacionId;
-  final String? sujetoId;
-  final String? claveId;
-  final bool claveEnHardware;
-  final bool claveRegistrada;
-  final ConfiguracionDeRastreo configuracion;
-  final int? configuracionCodigo;
-  final DateTime? configuracionCuando;
-  final String captura;
-  final bool capturaActiva;
-
-  /// La fila de la tabla de cadencia que manda ahora.
-  final FilaDeCadencia cadencia;
-  final EstadoDeMovimiento estado;
-  final String? motivoDelEstado;
-
-  /// `siempre` · `enUso` · `no` — con los nombres de PM-025 §4.3.
-  final String permiso;
-  final bool gpsPrendido;
-  final EnergiaDelAparato energia;
-  final int enCola;
-  final int colaBytes;
-  final int lotesAceptados;
-  final int lotesRechazados;
-
-  /// El último intento de envío: cuándo, qué lote, qué código y qué contestó.
-  final ({DateTime cuando, String loteId, String codigo, String respuesta})? ultimoEnvio;
-  final String? loteEnVuelo;
-  final DateTime? proximoIntento;
-  final int fallosSeguidos;
-  final int descartados;
-  final List<Hueco> huecos;
-  final List<String> problemas;
-
-  /// Por qué no hay GPS AHORA, o `null` si lo hay (o no se espera: quieto).
-  final MotivoSinGps? motivoSinGps;
-
-  /// Los [huecos] con su motivo (sólo local: el contrato del lote no lo lleva).
-  final List<({Hueco hueco, MotivoSinGps motivo})> huecosConMotivo;
-
-  /// El medio declarado para el viaje, o `null` (manda el del perfil).
-  final String? medioDeclarado;
-
-  /// Sucesos que esperan en la cola (sin red, o el servidor pidió esperar).
-  final int sucesosPendientes;
-
-  /// El último suceso que concluyó el aparato en esta sesión.
-  final SucesoDelAparato? ultimoSuceso;
-}
+export 'diagnostico_de_rastreo.dart';
+export 'estado_de_medicion.dart';
 
 class Rastreo {
   Rastreo._({
@@ -209,12 +97,16 @@ class Rastreo {
     }
     _sujetoId = _prefs.getString(_claveSujeto);
     _medio.restaurar(_prefs.getString(_claveMedio));
+    _medio.porOmision = _prefs.getString(_claveMedioPorOmision);
+    _consentimiento = _consentimientoDe(_prefs.getBool(_claveConsentimiento));
+    _cambios.stream.listen((_) => _publicarEstado());
   }
 
   static const _claveConfig = 'akpush.rastreo.config';
   static const _claveSujeto = 'akpush.rastreo.sujeto';
   static const _claveArranque = 'akpush.rastreo.arranque';
   static const _claveMedio = 'akpush.rastreo.medio';
+  static const _claveMedioPorOmision = 'akpush.rastreo.medioPorOmision';
 
   final ApiDeRastreo api;
   final AkPushApi apiDelNucleo;
@@ -261,8 +153,81 @@ class Rastreo {
   final MedioDelViaje _medio = MedioDelViaje();
   String? get _medioDeclarado => _medio.declarado;
 
-  /// El medio declarado para el viaje en curso, o `null` (manda el del perfil).
+  /// El medio declarado para el viaje en curso, o `null` (manda el de por omisión o el del perfil).
   String? get medioDeclarado => _medioDeclarado;
+
+  /// El medio de la persona cuando no declara uno para el viaje (ver [fijarMedioPorOmision]).
+  String? get medioPorOmision => _medio.porOmision;
+
+  /// El medio que viaja ahora en la presencia y en el lote: el declarado para este viaje, o el
+  /// de por omisión, o `null` (el del perfil).
+  String? get medioVigente => _medio.vigente;
+
+  /// Fija el medio de la persona —el de su póliza, por ejemplo— una vez. Queda guardado y vale
+  /// para todos los viajes en que no se declare otro: un viaje declarado le gana, y al terminar
+  /// se vuelve a éste (no a `null`). `null` lo borra. Fuera del vocabulario: [ArgumentError].
+  Future<void> fijarMedioPorOmision(String? medio) async {
+    if (medio != null && !mediosValidos.contains(medio)) {
+      throw ArgumentError.value(medio, 'medio', 'uno de ${mediosValidos.join(', ')}');
+    }
+    if (_medio.porOmision == medio) return;
+    _medio.porOmision = medio;
+    if (medio == null) {
+      await _prefs.remove(_claveMedioPorOmision);
+    } else {
+      await _prefs.setString(_claveMedioPorOmision, medio);
+    }
+    _presenciaT = 0;
+    _cambios.add(null);
+  }
+
+  /// El último punto conocido: el último que grabó la captura o, quieto, la última posición que
+  /// leyó la presencia. `null` si en esta sesión todavía no hubo ninguno.
+  PuntoDeRastreo? get ultimaPosicion => _ultimaPosicion;
+  PuntoDeRastreo? _ultimaPosicion;
+
+  // ══ EL ESTADO DE LA MEDICIÓN ══════════════════════════════════════════════════
+
+  EstadoDelConsentimiento _consentimiento = EstadoDelConsentimiento.nuncaPreguntado;
+  bool? _permisoConcedido;
+  bool? _ubicacionPrendida;
+  EstadoDeMedicion? _estadoPublicado;
+  final _estados = StreamController<EstadoDeMedicion>.broadcast();
+
+  /// Si se mide ahora y, si no, por qué (ver [EstadoDeMedicion]). Es barato: no toca el sistema;
+  /// el permiso y la ubicación se releen cada 30 s, en [diagnostico] y en [refrescarEstadoDeMedicion].
+  EstadoDeMedicion get estadoDeMedicion => estadoDeMedicionDe(
+        consentimiento: _consentimiento,
+        permisoConcedido: _permisoConcedido,
+        ubicacionPrendida: _ubicacionPrendida,
+        configuracionActiva: _config.activo,
+        apagadoPorElServidor: _apagado.apagado,
+        corriendo: _reloj != null,
+        capturaActiva: captura.activa,
+      );
+
+  /// Cada vez que [estadoDeMedicion] cambia (sólo los cambios, no las repeticiones).
+  Stream<EstadoDeMedicion> get estadosDeMedicion => _estados.stream;
+
+  /// Relee el permiso y la ubicación del sistema ya (al volver de Ajustes) y devuelve el estado.
+  Future<EstadoDeMedicion> refrescarEstadoDeMedicion() async {
+    await _vigilarGps();
+    _publicarEstado();
+    return estadoDeMedicion;
+  }
+
+  void _publicarEstado() {
+    final e = estadoDeMedicion;
+    if (e == _estadoPublicado) return;
+    _estadoPublicado = e;
+    _estados.add(e);
+  }
+
+  static EstadoDelConsentimiento _consentimientoDe(bool? guardado) => switch (guardado) {
+        true => EstadoDelConsentimiento.concedido,
+        false => EstadoDelConsentimiento.negado,
+        null => EstadoDelConsentimiento.nuncaPreguntado,
+      };
 
   /// Declara el medio del viaje actual (`pie`, `bici`, `dosRuedas`, `carro`, `bus`). Viaja en
   /// la presencia y en cada lote que se arme mientras dure el viaje; al quedar quieto después
@@ -442,6 +407,12 @@ class Rastreo {
   Future<bool> consentimientoAnotado() async =>
       (await SharedPreferences.getInstance()).getBool(_claveConsentimiento) ?? false;
 
+  /// Lo que la persona contestó a la pregunta del rastreo en este aparato: nunca se le preguntó,
+  /// dijo que sí, o dijo que no. A diferencia de [consentimientoAnotado], distingue el «no» del
+  /// silencio: al «no» no se le vuelve a preguntar en cada arranque.
+  Future<EstadoDelConsentimiento> estadoDelConsentimiento() async =>
+      _consentimientoDe((await SharedPreferences.getInstance()).getBool(_claveConsentimiento));
+
   /// Anota en Collection la decisión sobre el rastreo con el TEXTO EXACTO que se le mostró
   /// (categoría `rastreo`). Va con la persona y la instalación: el pulso lo busca por persona,
   /// así que se llama después de [enrolar]. Nunca rompe a la app: devuelve si se pudo anotar.
@@ -457,6 +428,8 @@ class Rastreo {
         plataforma: defaultTargetPlatform.name,
       );
       await (await SharedPreferences.getInstance()).setBool(_claveConsentimiento, concedido);
+      _consentimiento = _consentimientoDe(concedido);
+      _cambios.add(null);
       return true;
     } catch (e) {
       debugPrint('HzRastreo · no se pudo anotar el consentimiento: $e');
@@ -484,6 +457,7 @@ class Rastreo {
       c.continuarDesde = relevo.$1;
     }
     unawaited(_reenviarAparatoSiCambioElSdk());
+    unawaited(_vigilarGps());
     _clave ??= await ClaveDelAparato.asegurar();
     _emisor ??= EmisorDeLotes(
       cola: cola,
@@ -687,6 +661,12 @@ class Rastreo {
         bat = await Battery().batteryLevel;
       } catch (_) {}
       _presenciaT = ahora;
+      if (_ultimaPosicion == null || _ultimaPosicion!.t < p.timestamp.millisecondsSinceEpoch) {
+        _ultimaPosicion = PuntoDeRastreo(
+            t: p.timestamp.millisecondsSinceEpoch, lat: p.latitude, lon: p.longitude,
+            acc: p.accuracy < 0 ? 0 : p.accuracy, v: p.speed < 0 ? 0 : p.speed,
+            h: PuntoDeRastreo.rumboDesconocido, alt: p.altitude, mock: p.isMocked, bat: bat);
+      }
       final r = await api.enviarPresencia({
         'instalacionId': instalacionId,
         't': ahora,
@@ -697,7 +677,7 @@ class Rastreo {
         'h': (p.hasHeading && p.heading >= 0 && p.heading < 360) ? p.heading : PuntoDeRastreo.rumboDesconocido,
         'estado': captura.estado == EstadoDeMovimiento.rodando ? 'rodando' : 'detenido',
         'bat': (bat < 0 || bat > 100) ? -1 : bat,
-        if (_medioDeclarado != null) 'medio': _medioDeclarado,
+        if (_medio.vigente != null) 'medio': _medio.vigente,
       });
       final err = r.cuerpo == null ? null : RegExp(r'"error"\s*:\s*"([a-z_]+)"').firstMatch(r.cuerpo!)?.group(1);
       if (esApagadoDelServidor(r.codigo, err)) {
@@ -736,7 +716,7 @@ class Rastreo {
         // «confirmando» ya se mueve (el GPS preciso está prendido): para la flota es rodando
         'estado': captura.estado == EstadoDeMovimiento.quieto ? 'detenido' : 'rodando',
         'bat': p.bat,
-        if (_medioDeclarado != null) 'medio': _medioDeclarado,
+        if (_medio.vigente != null) 'medio': _medio.vigente,
       });
       final err = r.cuerpo == null ? null : RegExp(r'"error"\s*:\s*"([a-z_]+)"').firstMatch(r.cuerpo!)?.group(1);
       if (esApagadoDelServidor(r.codigo, err)) {
@@ -768,6 +748,7 @@ class Rastreo {
         _ultimoTDelTramo = punto.t;
         _tUltimoPunto = DateTime.now().millisecondsSinceEpoch;
         _recientes.add(punto);
+        _ultimaPosicion = punto;
         if (_recientes.length > SucesoDelAparato.maximoDePuntos) _recientes.removeAt(0);
         _detectorDeGolpe.velocidad(punto.v, punto.t);
         _medio.punto(captura.estado, punto.v, _config.arranqueMs);
@@ -836,15 +817,17 @@ class Rastreo {
   /// y lo manda a Collection. El tiempo va comprimido (no espera los 60 s), por eso corre en
   /// una instancia aparte: el reloj adelantado no ensucia al detector que escucha el sensor.
   ///
+  /// [pico] fija el pico en g. [confianzaMinima] (0..1) pide un golpe que la supere: se prueba
+  /// de menor a mayor (el pico de siempre; el doble de `gPico`; el doble con el GPS confirmando la
+  /// quietud) y sale el primero que llega, o el más fuerte si ninguno llega. El detector real no
+  /// se toca: cada intento es una instancia aparte, y sólo el elegido se avisa y se manda.
+  ///
   /// Devuelve el suceso, o `null` si el detector no lo concluyó (no debería pasar). Llamarlo
   /// dos veces en el mismo milisegundo da el mismo id: la ingesta lo toma como el mismo.
-  Future<SucesoDelAparato?> simularGolpe({double? pico}) async {
-    final d = DetectorDeGolpe(_config.golpe);
-    final ahora = DateTime.now().millisecondsSinceEpoch;
-    GolpeDetectado? g;
-    for (final m in DetectorDeGolpe.muestrasDeGolpe(desde: ahora, umbrales: d.umbrales, pico: pico)) {
-      g = d.muestra(m) ?? g;
-    }
+  Future<SucesoDelAparato?> simularGolpe({double? pico, double? confianzaMinima}) async {
+    final g = golpeSintetico(
+        umbrales: _config.golpe, desde: DateTime.now().millisecondsSinceEpoch,
+        pico: pico, confianzaMinima: confianzaMinima);
     if (g == null) return null;
     return _alGolpe(g, simulado: true);
   }
@@ -856,6 +839,10 @@ class Rastreo {
       final gps = await Geolocator.isLocationServiceEnabled();
       final ahora = DateTime.now().millisecondsSinceEpoch;
       final antes = _sinGps.vigente;
+      final permisoAntes = _permisoConcedido, gpsAntes = _ubicacionPrendida;
+      _permisoConcedido = p == LocationPermission.always || p == LocationPermission.whileInUse;
+      _ubicacionPrendida = gps;
+      if (permisoAntes != _permisoConcedido || gpsAntes != _ubicacionPrendida) _cambios.add(null);
       _sinGps.anotar(
         clasificarSinGps(
           permisoConcedido: p == LocationPermission.always || p == LocationPermission.whileInUse,

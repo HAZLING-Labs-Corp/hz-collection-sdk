@@ -291,3 +291,36 @@ class DetectorDeGolpe {
     return out;
   }
 }
+
+/// UN GOLPE SINTÉTICO, juzgado por una instancia aparte del detector (el que escucha el sensor
+/// no se toca). Sin [confianzaMinima], un solo intento con [pico] (o 1,5 × `gPico`). Con ella, se
+/// prueba de menor a mayor —el pico pedido o 1,5 × `gPico`; 2 × `gPico`; 2 × `gPico` con el GPS
+/// confirmando la quietud (velocidad 0)— y sale el primero que la alcanza; si ninguno, el más
+/// fuerte. `null` si el detector no concluyó ninguno.
+GolpeDetectado? golpeSintetico({
+  required UmbralesDeGolpe umbrales,
+  required int desde,
+  double? pico,
+  double? confianzaMinima,
+}) {
+  GolpeDetectado? juzgar(double? p, bool conGps) {
+    final d = DetectorDeGolpe(umbrales);
+    GolpeDetectado? g;
+    for (final m in DetectorDeGolpe.muestrasDeGolpe(desde: desde, umbrales: umbrales, pico: p)) {
+      g = d.muestra(m) ?? g;
+      if (conGps) d.velocidad(0, m.t);
+    }
+    return g;
+  }
+
+  if (confianzaMinima == null) return juzgar(pico, false);
+  final fuerte = math.max(pico ?? 0, umbrales.gPico * 2);
+  GolpeDetectado? mejor;
+  for (final (p, gps) in [(pico, false), (fuerte, false), (fuerte, true)]) {
+    final g = juzgar(p, gps);
+    if (g == null) continue;
+    if (g.confianza >= confianzaMinima) return g;
+    if (mejor == null || g.confianza > mejor.confianza) mejor = g;
+  }
+  return mejor;
+}

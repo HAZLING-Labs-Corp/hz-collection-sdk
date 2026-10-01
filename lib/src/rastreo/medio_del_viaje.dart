@@ -17,8 +17,15 @@ class MedioDelViaje {
   String? _delViajeTerminado;
   int? _finDelViajeTerminado;
 
-  /// El medio del viaje en curso, o `null` (manda el del perfil).
+  /// El medio de la persona cuando no declaró uno para el viaje (`Rastreo.fijarMedioPorOmision`):
+  /// el de su póliza, por ejemplo. Un viaje declarado le gana; al terminar, se vuelve a éste.
+  String? porOmision;
+
+  /// El medio declarado para el viaje en curso, o `null`.
   String? get declarado => _declarado;
+
+  /// El que manda ahora: el declarado para el viaje, o el de por omisión, o `null` (el perfil).
+  String? get vigente => _declarado ?? porOmision;
 
   /// Declara (o con `null`, borra) el medio. [estado] es el que tiene la captura ahora: si ya
   /// estaba rodando, eso no cuenta como haber rodado después de declarar.
@@ -77,11 +84,12 @@ class MedioDelViaje {
 
   /// El medio que lleva un lote cuyo punto más viejo es de [tMasViejo]: el declarado, o el del
   /// viaje que acaba de terminar si el lote trae puntos suyos (el último lote del viaje puede
-  /// armarse después de la quietud: el emisor estaba ocupado o esperando).
+  /// armarse después de la quietud: el emisor estaba ocupado o esperando). Sin ninguno de los
+  /// dos, el de por omisión.
   String? paraLote(int? tMasViejo) {
     if (_declarado != null) return _declarado;
     final fin = _finDelViajeTerminado;
     if (fin != null && tMasViejo != null && tMasViejo <= fin) return _delViajeTerminado;
-    return null;
+    return porOmision;
   }
 }

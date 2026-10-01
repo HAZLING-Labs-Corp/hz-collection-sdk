@@ -114,6 +114,8 @@ export 'src/transmision/politica_de_transmision.dart'
 // captura —la de Transistor, en la app de ejemplo— sin que este paquete dependa de ella.
 export 'src/rastreo/rastreo.dart'
     show Rastreo, ResultadoDeEnrolamiento, DiagnosticoDeRastreo;
+// Tramo 6.2: si se mide y, si no, por qué; y el consentimiento con sus tres casos.
+export 'src/rastreo/estado_de_medicion.dart' show EstadoDeMedicion, EstadoDelConsentimiento;
 export 'src/rastreo/configuracion_de_rastreo.dart' show ConfiguracionDeRastreo;
 export 'src/rastreo/cadencia.dart'
     show FilaDeCadencia, CondicionDeCadencia, SituacionDelAparato, evaluarCadencia;
