@@ -3,11 +3,14 @@ import 'dart:convert';
 import 'package:hz_collection_sdk/hz_collection_sdk.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'la_solicitud.dart';
 import 'lo_recolectado.dart';
 import 'llavero.dart';
+import 'l10n/generado/textos_de_rastreo.dart';
 import 'nucleo.dart';
+import 'rastreo/pantalla_de_rastreo.dart';
 import 'selector_de_comercio.dart';
 
 /// EL NOMBRE VISIBLE DE LA APLICACIÓN.
@@ -30,6 +33,12 @@ const _nombreDeLaApp = String.fromEnvironment('APP_NOMBRE', defaultValue: 'Colle
 /// `reportarUbicacion` se traga el error, no se veía nada. La app quedaba «midiendo bien y
 /// sin enviar» por apuntar al servidor equivocado. El README ya documenta 3085; esto lo
 /// hace coincidir con el default.
+/// El rastreo (módulo `rastreo` del SDK) es una sección MÁS de esta app de prueba, no otra app:
+/// se abre con el ícono de ruta de la barra. La ingesta puede ser otra dirección que la API.
+const _urlIngesta = String.fromEnvironment('RASTREO_URL_INGESTA');
+const _sujetoRastreo = String.fromEnvironment('RASTREO_SUJETO', defaultValue: 'sujeto-prueba-1');
+const _capturaRastreo = String.fromEnvironment('RASTREO_CAPTURA', defaultValue: 'propia');
+
 const _llave = String.fromEnvironment('AKPUSH_KEY', defaultValue: 'pk_demo.local');
 const _url = String.fromEnvironment('AKPUSH_URL', defaultValue: 'http://10.0.2.2:3085/api/v1');
 
@@ -72,6 +81,14 @@ class DemoApp extends StatelessWidget {
         // modal no tiene dónde dibujarse y no aparece.
         navigatorKey: AkPush.navegador,
         title: _nombreDeLaApp,
+        locale: const Locale('es'),
+        supportedLocales: TextosDeRastreo.supportedLocales,
+        localizationsDelegates: const [
+          TextosDeRastreo.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2D5F8A)),
           useMaterial3: true,
@@ -364,6 +381,19 @@ class _PantallaState extends State<Pantalla> {
           // AkPush.avisos · AkPush.estadoDeAvisos() · AkPush.resolverAvisos()
           AkPush.campanita(
             alResolver: (e) => _anotar('avisos: ${e.titulo.toLowerCase()}'),
+          ),
+          IconButton(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => const PantallaDeRastreo(
+                llave: _llave,
+                url: _url,
+                urlIngesta: _urlIngesta == '' ? null : _urlIngesta,
+                sujeto: _sujetoRastreo,
+                capturaInicial: _capturaRastreo,
+              ),
+            )),
+            icon: const Icon(Icons.route_outlined),
+            tooltip: 'Rastreo',
           ),
           IconButton(
             onPressed: _verDiagnostico,

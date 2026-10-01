@@ -104,6 +104,14 @@ class ApiDeRastreo {
         body: utf8.encode(cuerpo),
       ));
 
+  /// PRESENCIA (§4.2): dónde está ahora, liviana y de un solo uso (no se encola ni se reintenta:
+  /// una presencia vieja no sirve). Devuelve el resultado sólo para el diagnóstico.
+  Future<RespuestaDeIngesta> enviarPresencia(Map<String, dynamic> cuerpo) => _mandar(() => _cliente.post(
+        Uri.parse('$baseIngesta/api/v1/rastreo/presencia'),
+        headers: _cabeceras,
+        body: jsonEncode(cuerpo),
+      ));
+
   /// El bloque `rastreo` de la configuración, o `null` si no vino (o no se pudo leer).
   /// El segundo valor es el código, para el diagnóstico.
   Future<(Map<String, dynamic>?, RespuestaDeIngesta)> leerConfiguracion(

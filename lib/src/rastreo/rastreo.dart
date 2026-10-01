@@ -45,6 +45,7 @@ import 'cadencia.dart';
 import 'captura.dart';
 import 'cola_de_rastreo.dart';
 import 'configuracion_de_rastreo.dart';
+import 'punto.dart';
 import 'detector_de_movimiento.dart';
 import 'emisor_de_lotes.dart';
 import 'lote.dart';
@@ -407,6 +408,33 @@ class Rastreo {
     _cambios.add(null);
   }
 
+  int _presenciaT = 0;
+
+  /// La presencia sale cada `presenciaSeg` de la fila de cadencia que manda (0 → no sale): la
+  /// cadencia es dato, el SDK sólo la cumple. Es la que alimenta la «Flota en vivo» (§4.2).
+  /// Sin red o con error no se reintenta: la siguiente ya lleva una posición más nueva.
+  Future<void> _mandarPresencia(PuntoDeRastreo p) async {
+    final cada = captura.cadencia.presenciaSeg;
+    if (cada <= 0) return;
+    final ahora = DateTime.now().millisecondsSinceEpoch;
+    if (ahora - _presenciaT < cada * 1000) return;
+    _presenciaT = ahora;
+    try {
+      final r = await api.enviarPresencia({
+        'instalacionId': instalacionId,
+        't': p.t,
+        'lat': p.lat,
+        'lon': p.lon,
+        'acc': p.acc,
+        'v': p.v,
+        'h': p.h,
+        'estado': captura.estado == EstadoDeMovimiento.rodando ? 'rodando' : 'detenido',
+        'bat': p.bat,
+      });
+      if (!r.aceptado) _anotarProblema('presencia: ${r.codigo ?? 'sin red'}');
+    } catch (_) {}
+  }
+
   Future<void> _alEvento(EventoDeCaptura ev) async {
     switch (ev) {
       case PuntoCapturado(:final punto, tramo: final tramoDeLaCaptura, :final hueco):
@@ -427,6 +455,7 @@ class Rastreo {
         _tramoDelUltimo = tramo;
         _ultimoTDelTramo = punto.t;
         _cambios.add(null);
+        unawaited(_mandarPresencia(punto));
         unawaited(_intentarEnviar());
       case CambioDeEstado(:final motivo, :final vaciar):
         _motivo = motivo;
