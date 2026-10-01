@@ -245,14 +245,18 @@ class DetectorDeMovimiento {
 
       case EstadoDeMovimiento.confirmando:
         if (!precisa) return _decision();
-        if (v >= _config.arranqueMs && l.acc <= precisionParaConfirmarM) {
+        // Confirma el arranque la velocidad (≥ arranqueKmh) O haberse alejado de verdad de la zona de
+        // reposo: a pie el GPS da 3-6 km/h con saltos a 0, y sólo con velocidad una caminata real
+        // nunca confirmaba (medido el 2026-09-30: 2 puntos en 3 min).
+        final ancla = _ancla;
+        final seAlejo = ancla != null && _distancia(ancla, l) > radioDeZonaM * 1.5;
+        if ((v >= _config.arranqueMs || seAlejo) && l.acc <= precisionParaConfirmarM) {
           _confirmaciones++;
         } else {
           _confirmaciones = 0;
         }
         if (_confirmaciones >= 2) {
           estado = EstadoDeMovimiento.rodando;
-          tramo++;
           _ultimoMovimiento = l.t;
           _reposo = l;
           _ultimaGrabada = l.t;
@@ -264,13 +268,29 @@ class DetectorDeMovimiento {
               grabar: true,
               velocidad: v < 0 ? 0 : v,
               cambio: true,
-              motivo: 'confirmado: ${(v * 3.6).toStringAsFixed(0)} km/h dos veces');
+              motivo: seAlejo && v < _config.arranqueMs
+                  ? 'confirmado: salió de la zona de reposo'
+                  : 'confirmado: ${(v * 3.6).toStringAsFixed(0)} km/h dos veces');
         }
         if (l.t - (_desdeConfirmando ?? l.t) > esperaDeConfirmacion.inMilliseconds) {
           return _aQuieto(l, 'no se confirmó en ${esperaDeConfirmacion.inMinutes} min',
               vaciar: false);
         }
-        return _decision();
+        // MIENTRAS SE CONFIRMA TAMBIÉN SE GRABA: el GPS preciso ya está prendido y lo medido es
+        // real. El SDK informa; decidir si fue un viaje es del servidor (la constancia). Al
+        // ritmo de la fila de rodando, para que una caminata se vea en vivo desde el primer paso.
+        final cadaConf = _config.filaPara(SituacionDelAparato(
+          forzado: _config.estadoForzado != null,
+          velKmh: _ultimaVelMs * 3.6,
+          enMovimiento: true,
+          quietoMin: 0,
+          hora: DateTime.fromMillisecondsSinceEpoch(l.t),
+        ));
+        final seg = cadaConf.muestreoSeg > 0 ? cadaConf.muestreoSeg : FilaDeCadencia.respaldo.muestreoSeg;
+        final ult = _ultimaGrabada;
+        if (ult != null && l.t - ult < seg * 1000 - 500) return _decision();
+        _ultimaGrabada = l.t;
+        return _decision(grabar: true, velocidad: v < 0 ? 0 : v);
 
       case EstadoDeMovimiento.rodando:
         if (!precisa) return _decision();
@@ -330,7 +350,10 @@ class DetectorDeMovimiento {
 
   Decision _aConfirmando(int t, String motivo) {
     estado = EstadoDeMovimiento.confirmando;
+    // el tramo (viaje) nace acá: los puntos grabados mientras se confirma son suyos
+    tramo++;
     _confirmaciones = 0;
+    _ultimaGrabada = null;
     _desdeConfirmando = t;
     return _decision(cambio: true, motivo: motivo);
   }

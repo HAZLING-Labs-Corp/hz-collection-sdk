@@ -141,5 +141,9 @@
   "mapaHaceMin": "hace {n} min",
   "@mapaHaceMin": { "placeholders": { "n": { "type": "int" } } },
   "mapaHaceHoras": "hace {n} h",
-  "@mapaHaceHoras": { "placeholders": { "n": { "type": "int" } } }
+  "@mapaHaceHoras": { "placeholders": { "n": { "type": "int" } } },
+
+  "simularCaminata": "Simular caminata desde aquí",
+  "caminataExplicacion": "Una vuelta a pie de ~1,5 km por las calles reales que salen de donde está el teléfono, a paso humano, con 20 s parado al salir y parado al volver.",
+  "caminataSinRuta": "No se pudo armar la caminata: el enrutador no contestó o no hay posición."
 }

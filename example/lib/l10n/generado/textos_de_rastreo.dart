@@ -741,6 +741,24 @@ abstract class TextosDeRastreo {
   /// In es, this message translates to:
   /// **'hace {n} h'**
   String mapaHaceHoras(int n);
+
+  /// No description provided for @simularCaminata.
+  ///
+  /// In es, this message translates to:
+  /// **'Simular caminata desde aquí'**
+  String get simularCaminata;
+
+  /// No description provided for @caminataExplicacion.
+  ///
+  /// In es, this message translates to:
+  /// **'Una vuelta a pie de ~1,5 km por las calles reales que salen de donde está el teléfono, a paso humano, con 20 s parado al salir y parado al volver.'**
+  String get caminataExplicacion;
+
+  /// No description provided for @caminataSinRuta.
+  ///
+  /// In es, this message translates to:
+  /// **'No se pudo armar la caminata: el enrutador no contestó o no hay posición.'**
+  String get caminataSinRuta;
 }
 
 class _TextosDeRastreoDelegate extends LocalizationsDelegate<TextosDeRastreo> {

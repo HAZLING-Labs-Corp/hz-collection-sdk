@@ -61,7 +61,9 @@ Future<RecorridoAjustado?> ajustarACalles(List<PuntoDelMapa> puntos, {http.Clien
     ini--;
   }
   final tramo = puntos.sublist(ini);
-  if (tramo.length < 3) return null;
+  // Con pocos puntos el servicio «inventa» una ruta por calles entre ellos, que no es el recorrido:
+  // se pide sólo cuando hay con qué (8 puntos = ~80 s a pie).
+  if (tramo.length < 8) return null;
   final unicos = <PuntoDelMapa>[];
   for (final p in tramo) {
     if (unicos.isEmpty || unicos.last.t != p.t) unicos.add(p);
@@ -92,10 +94,24 @@ Future<RecorridoAjustado?> ajustarACalles(List<PuntoDelMapa> puntos, {http.Clien
     for (final l in legs) {
       calles.addAll(decodificarPolyline6((l as Map)['shape'] as String));
     }
-    return calles.length < 2 ? null : RecorridoAjustado(calles, sel.last.t);
+    if (calles.length < 2) return null;
+    // si lo «ajustado» es mucho más largo que lo medido, el servicio se fue por otro lado: no se usa
+    final crudo = _largo([for (final p in sel) LatLng(p.lat, p.lon)]);
+    final pegado = _largo(calles);
+    if (crudo > 50 && pegado > crudo * 1.6) return null;
+    return RecorridoAjustado(calles, sel.last.t);
   } catch (_) {
     return null;
   } finally {
     if (cliente == null) c.close();
   }
+}
+
+double _largo(List<LatLng> l) {
+  var m = 0.0;
+  const d = Distance();
+  for (var i = 1; i < l.length; i++) {
+    m += d.as(LengthUnit.Meter, l[i - 1], l[i]);
+  }
+  return m;
 }

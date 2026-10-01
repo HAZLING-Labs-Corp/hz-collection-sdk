@@ -17,6 +17,7 @@ import 'package:hz_collection_sdk/hz_collection_sdk.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/generado/textos_de_rastreo.dart';
+import 'caminata_de_prueba.dart';
 import 'captura_transistor.dart';
 import 'historial_de_recorrido.dart';
 import 'medidas.dart';
@@ -292,6 +293,25 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
         }
       });
 
+  Future<void> _simularCaminata() => _hacer(() async {
+        final sim = _simulacion;
+        if (sim != null && sim.corriendo) {
+          await Simulador.detener();
+          return;
+        }
+        final pos = await Geolocator.getLastKnownPosition() ??
+            await Geolocator.getCurrentPosition(
+                locationSettings: const LocationSettings(accuracy: LocationAccuracy.best, timeLimit: Duration(seconds: 15)));
+        final ruta = await caminataDePrueba(lat: pos.latitude, lon: pos.longitude, quietoMin: _rastreo!.configuracion.quietoMin);
+        final txt = t;
+        if (ruta == null) {
+          setState(() => _aviso = txt.caminataSinRuta);
+          return;
+        }
+        final no = await Simulador.iniciar(ruta);
+        if (no != null) setState(() => _aviso = no);
+      });
+
   @override
   Widget build(BuildContext context) {
     final m = context.medidas;
@@ -453,14 +473,20 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
     return _Seccion(
       titulo: t.seccionSimular,
       filas: [
+        _Fila(t.caminataExplicacion, '', largo: true),
         _Fila(t.simularExplicacion, '', largo: true),
         if (corriendo) _Fila(t.simulando(s.indice, s.total), ''),
       ],
       acciones: [
         FilledButton.icon(
-          onPressed: _ocupado ? null : _simular,
-          icon: Icon(corriendo ? Icons.stop : Icons.route),
-          label: Text(corriendo ? t.detenerSimulacion : t.simular),
+          onPressed: _ocupado ? null : _simularCaminata,
+          icon: Icon(corriendo ? Icons.stop : Icons.directions_walk),
+          label: Text(corriendo ? t.detenerSimulacion : t.simularCaminata),
+        ),
+        OutlinedButton.icon(
+          onPressed: _ocupado || corriendo ? null : _simular,
+          icon: const Icon(Icons.route),
+          label: Text(t.simular),
         ),
       ],
     );

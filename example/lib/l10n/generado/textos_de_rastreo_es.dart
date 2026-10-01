@@ -378,4 +378,15 @@ class TextosDeRastreoEs extends TextosDeRastreo {
   String mapaHaceHoras(int n) {
     return 'hace $n h';
   }
+
+  @override
+  String get simularCaminata => 'Simular caminata desde aquí';
+
+  @override
+  String get caminataExplicacion =>
+      'Una vuelta a pie de ~1,5 km por las calles reales que salen de donde está el teléfono, a paso humano, con 20 s parado al salir y parado al volver.';
+
+  @override
+  String get caminataSinRuta =>
+      'No se pudo armar la caminata: el enrutador no contestó o no hay posición.';
 }

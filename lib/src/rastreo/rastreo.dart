@@ -506,7 +506,8 @@ class Rastreo {
         'acc': p.acc,
         'v': p.v,
         'h': p.h,
-        'estado': captura.estado == EstadoDeMovimiento.rodando ? 'rodando' : 'detenido',
+        // «confirmando» ya se mueve (el GPS preciso está prendido): para la flota es rodando
+        'estado': captura.estado == EstadoDeMovimiento.quieto ? 'detenido' : 'rodando',
         'bat': p.bat,
       });
       if (!r.aceptado) _anotarProblema('presencia: ${r.codigo ?? 'sin red'}');

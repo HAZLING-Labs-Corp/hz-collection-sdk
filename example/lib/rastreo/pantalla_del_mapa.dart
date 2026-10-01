@@ -151,8 +151,10 @@ class _PantallaDelMapaState extends State<PantallaDelMapa> {
           color: _colorRuta,
           width: 5,
         ),
-      ] else if (pts.length >= 2)
-        ml.PolylineLayer(polylines: [ml.LineString(coordinates: _cruda(pts))], color: _colorRuta.withValues(alpha: 0.7), width: 4),
+      ],
+      // lo medido por el GPS siempre se ve: fino, encima de la calle
+      if (pts.length >= 2)
+        ml.PolylineLayer(polylines: [ml.LineString(coordinates: _cruda(pts))], color: _calles != null ? const Color(0xFF1F3F86) : _colorRuta, width: _calles != null ? 2 : 4),
     ];
     return Scaffold(
       appBar: AppBar(
