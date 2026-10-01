@@ -53,6 +53,7 @@ class SucesoDelAparato {
     required double confianza,
     List<PuntoDeRastreo> puntos = const [],
     this.simulado = false,
+    this.sensor,
   })  : id = idDelSuceso(instalacionId, tipo, t),
         confianza = (confianza.clamp(0.0, 1.0) * 100).round() / 100,
         puntos = List.unmodifiable(puntos.length > maximoDePuntos ? puntos.sublist(puntos.length - maximoDePuntos) : puntos);
@@ -74,6 +75,9 @@ class SucesoDelAparato {
   /// Si salió de `Rastreo.simularGolpe`. NO viaja: el contrato no lo tiene. Es para la app.
   final bool simulado;
 
+  /// Lo que midió el acelerómetro (sólo en un golpe). Aditivo: una ingesta vieja lo ignora.
+  final Map<String, dynamic>? sensor;
+
   Map<String, dynamic> toJson() => {
         'instalacionId': instalacionId,
         'id': id,
@@ -81,6 +85,7 @@ class SucesoDelAparato {
         't': t,
         'confianza': confianza,
         if (puntos.isNotEmpty) 'puntos': [for (final p in puntos) p.toJson()],
+        if (sensor != null) 'sensor': sensor,
       };
 
   Map<String, dynamic> _paraGuardar() => {...toJson(), 'simulado': simulado};
@@ -98,6 +103,7 @@ class SucesoDelAparato {
             PuntoDeRastreo.fromJson(Map<String, dynamic>.from(p as Map)),
         ],
         simulado: j['simulado'] == true,
+        sensor: j['sensor'] is Map ? Map<String, dynamic>.from(j['sensor'] as Map) : null,
       );
     } catch (_) {
       return null;

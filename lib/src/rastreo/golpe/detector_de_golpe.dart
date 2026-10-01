@@ -78,8 +78,24 @@ class UmbralesDeGolpe {
 }
 
 /// Lo que el detector concluye: hubo golpe y después quietud.
+/// Lo que el acelerómetro midió para concluir un golpe (Collection: `sensor` del suceso).
+class SensorDelGolpe {
+  const SensorDelGolpe({required this.pico, required this.gPico, required this.dispersion, required this.dispersionMaxima, required this.conGps, required this.factorPico, required this.factorQuietud, required this.factorGps});
+  final double pico, gPico, dispersion, dispersionMaxima, factorPico, factorQuietud, factorGps;
+  final bool conGps;
+
+  Map<String, dynamic> toJson() => {
+        'pico': pico, 'gPico': gPico, 'dispersion': dispersion, 'dispersionMaxima': dispersionMaxima, 'conGps': conGps,
+        'factores': {'pico': factorPico, 'quietud': factorQuietud, 'gps': factorGps},
+      };
+}
+
 class GolpeDetectado {
-  const GolpeDetectado({required this.t, required this.pico, required this.confianza, required this.conGps});
+  const GolpeDetectado({required this.t, required this.pico, required this.confianza, required this.conGps, this.sensor});
+
+  /// Lo que el acelerómetro midió y los factores de la confianza (viaja en el suceso, para que el
+  /// servidor muestre la fórmula con sus números).
+  final SensorDelGolpe? sensor;
 
   /// La hora del pico (ms). Es la `t` del suceso y entra en su id.
   final int t;
@@ -218,6 +234,7 @@ class DetectorDeGolpe {
         pico: _pico,
         confianza: confianzaDe(_pico, _peorDispersion, _gpsDijoQuieto),
         conGps: _gpsDijoQuieto,
+        sensor: sensorDe(_pico, _peorDispersion, _gpsDijoQuieto),
       );
       _fase = FaseDelGolpe.antirebote;
       _hastaAntirebote = t + antirebote.inMilliseconds;
@@ -238,6 +255,14 @@ class DetectorDeGolpe {
     _bloquesJuzgados = true;
     if (disp > _peorDispersion) _peorDispersion = disp;
     return true;
+  }
+
+  /// Los números de la fórmula, tal cual los usa [confianzaDe].
+  SensorDelGolpe sensorDe(double pico, double peorDispersion, bool conGps) {
+    final p = 0.5 + 0.5 * ((pico - umbrales.gPico) / umbrales.gPico).clamp(0.0, 1.0);
+    final q = 1 - 0.5 * (peorDispersion / dispersionMaxima).clamp(0.0, 1.0);
+    double r3(double x) => (x * 1000).round() / 1000;
+    return SensorDelGolpe(pico: r3(pico), gPico: umbrales.gPico, dispersion: r3(peorDispersion), dispersionMaxima: dispersionMaxima, conGps: conGps, factorPico: r3(p), factorQuietud: r3(q), factorGps: conGps ? 1.0 : 0.85);
   }
 
   /// LA CONFIANZA (0..1) = la del pico × la de la quietud × la del GPS.

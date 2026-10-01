@@ -132,6 +132,11 @@ void main() {
       expect(d.confianzaDe(8, 0, true), 1.0);
       expect(d.confianzaDe(20, 0, true), 1.0);
       expect(d.confianzaDe(8, DetectorDeGolpe.dispersionMaxima, false), closeTo(0.43, 0.01));
+      // los números de la fórmula viajan con el golpe (Collection muestra la fórmula con ellos)
+      final s = d.sensorDe(6.5, 0.004, true);
+      expect(s.toJson(), {'pico': 6.5, 'gPico': d.umbrales.gPico, 'dispersion': 0.004, 'dispersionMaxima': DetectorDeGolpe.dispersionMaxima, 'conGps': true,
+        'factores': {'pico': s.factorPico, 'quietud': s.factorQuietud, 'gps': 1.0}});
+      expect(s.factorPico * s.factorQuietud * s.factorGps, closeTo(d.confianzaDe(6.5, 0.004, true), 0.01));
     });
   });
 

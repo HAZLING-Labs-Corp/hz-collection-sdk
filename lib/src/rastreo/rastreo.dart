@@ -817,6 +817,7 @@ class Rastreo {
       confianza: g.confianza,
       puntos: List.of(_recientes),
       simulado: simulado,
+      sensor: g.sensor?.toJson(),
     );
     _ultimoSuceso = s;
     _sucesos.add(s);
