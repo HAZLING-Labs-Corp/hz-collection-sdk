@@ -1,17 +1,18 @@
-/// EL MAPA DE «YO» — sólo de la app de ejemplo. Dibuja todo lo recorrido (el historial local)
-/// con la línea coloreada por velocidad, el punto actual con su precisión y su antigüedad.
+/// EL MAPA DE «YO» — sólo de la app de ejemplo. Calles en gris (el MISMO estilo vectorial de la
+/// consola web), tu personita, la calle completa por la que fuiste y la línea cruda del GPS encima.
 library;
 
 import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hz_collection_sdk/hz_collection_sdk.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:maplibre/maplibre.dart' as ml;
 
 import '../l10n/generado/textos_de_rastreo.dart';
+import 'ajustar_a_calles.dart';
+import 'estilo_de_calles.dart';
 import 'historial_de_recorrido.dart';
 
 class PantallaDelMapa extends StatefulWidget {
@@ -24,36 +25,32 @@ class PantallaDelMapa extends StatefulWidget {
 }
 
 class _PantallaDelMapaState extends State<PantallaDelMapa> {
-  final _mapa = MapController();
+  ml.MapController? _mapa;
+  String? _estilo;
   StreamSubscription<void>? _sub;
   StreamSubscription<Position>? _yo;
   Position? _posicion;
   Timer? _reloj;
   bool _seguir = true;
-  bool _mapaListo = false;
+  RecorridoAjustado? _calles;
+  bool _ajustando = false;
+  int _ajustadoConPuntos = 0;
 
-  /// Con miles de puntos la línea se simplifica: nunca más de esto en pantalla.
-  static const _maxPuntosDibujados = 1500;
-
-  // quieto · a pie · rápido — mismo corte que el visor de escritorio (0,5 y 3 m/s).
   static const _colorRuta = Color(0xFF3B6FD4);
-
-  /// Saturación al 10 % y un poco más claro: un mapa de navegación sobrio, no un mapa de colores.
-  static const _desaturar = ColorFilter.matrix(<double>[
-    0.2126 * 0.9 + 0.1, 0.7152 * 0.9, 0.0722 * 0.9, 0, 18,
-    0.2126 * 0.9, 0.7152 * 0.9 + 0.1, 0.0722 * 0.9, 0, 18,
-    0.2126 * 0.9, 0.7152 * 0.9, 0.0722 * 0.9 + 0.1, 0, 18,
-    0, 0, 0, 1, 0,
-  ]);
 
   @override
   void initState() {
     super.initState();
+    unawaited(archivoDelEstilo().then((e) {
+      if (mounted) setState(() => _estilo = e);
+    }));
     _sub = widget.historial.cambios.listen((_) {
       if (!mounted) return;
       setState(() {});
       _centrarSiSigue();
+      unawaited(_ajustar());
     });
+    unawaited(_ajustar());
     unawaited(_seguirMiPosicion());
     _reloj = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
@@ -69,7 +66,7 @@ class _PantallaDelMapaState extends State<PantallaDelMapa> {
   }
 
   /// El punto «aquí estoy» no depende de que el rastreo haya grabado algo: mientras el mapa está
-  /// abierto, se escucha la posición del teléfono (en primer plano, sin costo de fondo).
+  /// abierto se escucha la posición del teléfono (primer plano, sin costo de fondo).
   Future<void> _seguirMiPosicion() async {
     try {
       final p = await Geolocator.checkPermission();
@@ -89,48 +86,38 @@ class _PantallaDelMapaState extends State<PantallaDelMapa> {
     } catch (_) {}
   }
 
-  void _centrarSiSigue() {
-    final p = widget.historial.puntos;
-    final pos = _posicion;
-    if (!_seguir || !_mapaListo) return;
-    if (pos != null) {
-      _mapa.move(LatLng(pos.latitude, pos.longitude), _mapa.camera.zoom);
-    } else if (p.isNotEmpty) {
-      _mapa.move(LatLng(p.last.lat, p.last.lon), _mapa.camera.zoom);
-    }
+  /// Pega el recorrido a las calles: al abrir y cada 6 puntos nuevos (un pedido a la vez).
+  Future<void> _ajustar() async {
+    final pts = widget.historial.puntos;
+    if (_ajustando || pts.length < 3 || pts.length - _ajustadoConPuntos < (_calles == null ? 1 : 6)) return;
+    _ajustando = true;
+    final n = pts.length;
+    final r = await ajustarACalles(List.of(pts));
+    _ajustando = false;
+    if (!mounted) return;
+    _ajustadoConPuntos = n;
+    if (r != null) setState(() => _calles = r);
   }
 
-  /// Una sola línea, como una ruta de navegación: el mapa no se llena de colores.
-  Color _color(double v) => _colorRuta;
+  ml.Position? _donde() {
+    final pos = _posicion;
+    if (pos != null) return ml.Position(pos.longitude, pos.latitude);
+    final p = widget.historial.puntos;
+    return p.isEmpty ? null : ml.Position(p.last.lon, p.last.lat);
+  }
 
-  /// Segmentos del mismo color, sobre una lista ya simplificada.
-  List<Polyline> _lineas(List<PuntoDelMapa> pts) {
-    if (pts.length < 2) return const [];
-    final paso = pts.length <= _maxPuntosDibujados ? 1 : (pts.length / _maxPuntosDibujados).ceil();
-    final sel = <PuntoDelMapa>[
-      for (var i = 0; i < pts.length; i += paso) pts[i],
-      if ((pts.length - 1) % paso != 0) pts.last,
+  void _centrarSiSigue() {
+    final d = _donde();
+    if (!_seguir || d == null) return;
+    _mapa?.animateCamera(center: d, nativeDuration: const Duration(milliseconds: 700));
+  }
+
+  List<ml.Position> _cruda(List<PuntoDelMapa> pts) {
+    final paso = pts.length <= 1500 ? 1 : (pts.length / 1500).ceil();
+    return [
+      for (var i = 0; i < pts.length; i += paso) ml.Position(pts[i].lon, pts[i].lat),
+      if ((pts.length - 1) % paso != 0) ml.Position(pts.last.lon, pts.last.lat),
     ];
-    final out = <Polyline>[];
-    var tramo = <LatLng>[LatLng(sel.first.lat, sel.first.lon)];
-    var color = _color(sel.first.v);
-    for (var i = 1; i < sel.length; i++) {
-      final a = sel[i - 1], b = sel[i];
-      final corteDeTramo = a.tramo != b.tramo || b.t - a.t > 20 * 60 * 1000;
-      final c = _color(b.v);
-      if (corteDeTramo || c != color) {
-        if (tramo.length > 1) {
-          out.add(Polyline(points: tramo, color: color, strokeWidth: 5, borderColor: Colors.white, borderStrokeWidth: 1.5, pattern: StrokePattern.solid()));
-        }
-        tramo = corteDeTramo ? <LatLng>[] : <LatLng>[LatLng(a.lat, a.lon)];
-        color = c;
-      }
-      tramo.add(LatLng(b.lat, b.lon));
-    }
-    if (tramo.length > 1) {
-      out.add(Polyline(points: tramo, color: color, strokeWidth: 5, borderColor: Colors.white, borderStrokeWidth: 1.5, pattern: StrokePattern.solid()));
-    }
-    return out;
   }
 
   String _antiguedad(TextosDeRastreo t, int ms) {
@@ -150,16 +137,32 @@ class _PantallaDelMapaState extends State<PantallaDelMapa> {
       if (pts[i].tramo == pts[i - 1].tramo) metros += HistorialDeRecorrido.metros(pts[i - 1], pts[i]);
     }
     final dur = pts.length < 2 ? Duration.zero : Duration(milliseconds: pts.last.t - pts.first.t);
-    final centro = ultimo == null ? const LatLng(10.4969, -66.8480) : LatLng(ultimo.lat, ultimo.lon);
+    final donde = _donde();
+    final centro = donde ?? ml.Position(-66.8480, 10.4969);
+    final capas = <ml.Layer>[
+      if (_calles != null) ...[
+        ml.PolylineLayer(
+          polylines: [ml.LineString(coordinates: [for (final c in _calles!.calles) ml.Position(c.longitude, c.latitude)])],
+          color: _colorRuta.withValues(alpha: 0.30),
+          width: 16,
+        ),
+        ml.PolylineLayer(
+          polylines: [ml.LineString(coordinates: [for (final c in _calles!.calles) ml.Position(c.longitude, c.latitude)])],
+          color: _colorRuta,
+          width: 5,
+        ),
+      ] else if (pts.length >= 2)
+        ml.PolylineLayer(polylines: [ml.LineString(coordinates: _cruda(pts))], color: _colorRuta.withValues(alpha: 0.7), width: 4),
+    ];
     return Scaffold(
       appBar: AppBar(
         title: Text(t.mapaTitulo),
         actions: [
-          IconButton(
-            tooltip: t.mapaBorrar,
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => widget.historial.borrar(),
-          ),
+          IconButton(tooltip: t.mapaBorrar, icon: const Icon(Icons.delete_outline), onPressed: () {
+            setState(() => _calles = null);
+            _ajustadoConPuntos = 0;
+            widget.historial.borrar();
+          }),
         ],
       ),
       body: Column(
@@ -167,76 +170,37 @@ class _PantallaDelMapaState extends State<PantallaDelMapa> {
           Expanded(
             child: Stack(
               children: [
-                FlutterMap(
-                  mapController: _mapa,
-                  options: MapOptions(
-                    initialCenter: centro,
-                    initialZoom: 17,
-                    onMapReady: () {
-                      _mapaListo = true;
-                      _centrarSiSigue();
+                if (_estilo == null)
+                  const Center(child: CircularProgressIndicator())
+                else
+                  ml.MapLibreMap(
+                    options: ml.MapOptions(initStyle: _estilo!, initCenter: centro, initZoom: 16.5, maxZoom: 19.5, minZoom: 9),
+                    onMapCreated: (c) => _mapa = c,
+                    onEvent: (e) {
+                      if (e is ml.MapEventStartMoveCamera && e.reason == ml.CameraChangeReason.apiGesture && _seguir) {
+                        setState(() => _seguir = false);
+                      }
                     },
-                    onPositionChanged: (_, porGesto) {
-                      if (porGesto && _seguir) setState(() => _seguir = false);
-                    },
-                  ),
-                  children: [
-                    // Estilo de navegación: el mapa base se desatura (casi gris) para que no invada;
-                    // las calles conservan sus nombres. (CARTO ya pide llave: se usa el mosaico de OSM.)
-                    TileLayer(
-                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.juanpush.android1',
-                      tileBuilder: (context, tile, _) => ColorFiltered(colorFilter: _desaturar, child: tile),
-                    ),
-                    PolylineLayer(polylines: _lineas(pts)),
-                    if (_posicion != null || ultimo != null)
-                      CircleLayer(circles: [
-                        CircleMarker(
-                          point: _posicion != null
-                              ? LatLng(_posicion!.latitude, _posicion!.longitude)
-                              : LatLng(ultimo!.lat, ultimo.lon),
-                          radius: math.max(_posicion?.accuracy ?? ultimo!.acc, 3),
-                          useRadiusInMeter: true,
-                          color: const Color(0x332D5F8A),
-                          borderColor: const Color(0xFF2D5F8A),
-                          borderStrokeWidth: 1,
-                        ),
-                      ]),
-                    MarkerLayer(markers: [
-                      if (pts.isNotEmpty)
-                        Marker(
-                          point: LatLng(pts.first.lat, pts.first.lon),
-                          width: 22,
-                          height: 22,
-                          child: const Icon(Icons.flag, color: Color(0xFF444B55), size: 22),
-                        ),
-                      if (_posicion != null || ultimo != null)
-                        Marker(
-                          point: _posicion != null
-                              ? LatLng(_posicion!.latitude, _posicion!.longitude)
-                              : LatLng(ultimo!.lat, ultimo.lon),
-                          width: 22,
-                          height: 22,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF3B6FD4),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 3),
-                            ),
+                    layers: capas,
+                    children: [
+                      ml.WidgetLayer(markers: [
+                        if (pts.isNotEmpty)
+                          ml.Marker(
+                            point: ml.Position(pts.first.lon, pts.first.lat),
+                            size: const Size(26, 26),
+                            child: const Icon(Icons.flag, color: Color(0xFF444B55), size: 26),
                           ),
-                        ),
-                    ]),
-                    const RichAttributionWidget(
-                      attributions: [TextSourceAttribution('© OpenStreetMap')],
-                    ),
-                  ],
-                ),
-                if (ultimo == null && _posicion == null)
-                  Center(
-                    child: Card(
-                      child: Padding(padding: const EdgeInsets.all(16), child: Text(t.mapaSinPuntos)),
-                    ),
+                        if (donde != null)
+                          ml.Marker(
+                            point: donde,
+                            size: const Size(44, 56),
+                            child: Transform.translate(offset: const Offset(0, -26), child: const _PinDePersona()),
+                          ),
+                      ]),
+                    ],
                   ),
+                if (ultimo == null && _posicion == null)
+                  Center(child: Card(child: Padding(padding: const EdgeInsets.all(16), child: Text(t.mapaSinPuntos)))),
                 Positioned(
                   right: 12,
                   bottom: 12,
@@ -283,4 +247,41 @@ class _PantallaDelMapaState extends State<PantallaDelMapa> {
       ),
     );
   }
+}
+
+/// La personita: cabeza y hombros dentro de un pin con sombra — la misma figura de la consola web.
+class _PinDePersona extends StatelessWidget {
+  const _PinDePersona();
+  @override
+  Widget build(BuildContext context) => const SizedBox(width: 44, height: 56, child: CustomPaint(painter: _PintorDelPin(_colorRuta)));
+  static const _colorRuta = Color(0xFF3B6FD4);
+}
+
+class _PintorDelPin extends CustomPainter {
+  const _PintorDelPin(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const cx = 22.0, cy = 21.0, r = 17.0;
+    final pin = Path()
+      ..moveTo(cx - r * 0.81, cy + r * 0.59)
+      ..arcTo(Rect.fromCircle(center: const Offset(cx, cy), radius: r), math.pi * 0.8, math.pi * 1.4, false)
+      ..lineTo(cx, 53)
+      ..close();
+    canvas.drawShadow(pin, Colors.black, 4, true);
+    canvas.drawPath(pin, Paint()..color = color);
+    canvas.drawPath(pin, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 2.5);
+    final blanco = Paint()..color = Colors.white;
+    canvas.drawCircle(const Offset(cx, cy - 5), 5.2, blanco);
+    final hombros = Path()
+      ..moveTo(cx - 9.5, cy + 10)
+      ..quadraticBezierTo(cx - 9.5, cy + 1.5, cx, cy + 1.5)
+      ..quadraticBezierTo(cx + 9.5, cy + 1.5, cx + 9.5, cy + 10)
+      ..close();
+    canvas.drawPath(hombros, blanco);
+  }
+
+  @override
+  bool shouldRepaint(covariant _PintorDelPin old) => old.color != color;
 }

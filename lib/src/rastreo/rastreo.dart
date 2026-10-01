@@ -313,6 +313,16 @@ class Rastreo {
   /// ARRANCA: lee la configuración y, si `activo`, prende la captura. Se llama en cada
   /// arranque de la aplicación.
   Future<String?> iniciar() async {
+    // UNA SOLA CAPTURA VIVA POR PROCESO: si otro `Rastreo` de este proceso sigue corriendo (la
+    // pantalla se abrió de nuevo y armó uno nuevo), se detiene antes. Sin esto cada instancia abre
+    // su propio GPS y cada punto se graba N veces (medido: 118 puntos en el servidor contra 41 reales).
+    final otro = _vivo;
+    if (otro != null && !identical(otro, this)) {
+      try {
+        await otro.detener();
+      } catch (_) {}
+    }
+    _vivo = this;
     _clave ??= await ClaveDelAparato.asegurar();
     _emisor ??= EmisorDeLotes(
       cola: cola,
@@ -368,6 +378,7 @@ class Rastreo {
   }
 
   Future<void> detener() async {
+    if (identical(_vivo, this)) _vivo = null;
     await captura.detener();
     _reloj?.cancel();
     _relojDePresencia?.cancel();
@@ -421,6 +432,9 @@ class Rastreo {
   /// La presencia sale cada `presenciaSeg` de la fila de cadencia que manda (0 → no sale): la
   /// cadencia es dato, el SDK sólo la cumple. Es la que alimenta la «Flota en vivo» (§4.2).
   /// Sin red o con error no se reintenta: la siguiente ya lleva una posición más nueva.
+  /// El único `Rastreo` de este proceso que está corriendo (ver `iniciar`).
+  static Rastreo? _vivo;
+
   Timer? _relojDePresencia;
 
   /// PRESENCIA SIN RUTA: la flota tiene que decir DÓNDE está un aparato aunque no haya empezado a
