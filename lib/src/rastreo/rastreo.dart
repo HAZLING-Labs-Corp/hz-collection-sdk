@@ -311,6 +311,36 @@ class Rastreo {
   }
 
   /// ARRANCA: lee la configuración y, si `activo`, prende la captura. Se llama en cada
+  static const _claveConsentimiento = 'hz_rastreo_consentimiento_anotado';
+
+  /// ¿Ya quedó anotado en Collection el sí a la pregunta del rastreo, en este aparato?
+  /// 🔴 El permiso del sistema NO es el consentimiento: no dice a qué texto dijo que sí la persona,
+  /// y el pulso (§4.10) lo exige anotado («el silencio no es un sí»).
+  Future<bool> consentimientoAnotado() async =>
+      (await SharedPreferences.getInstance()).getBool(_claveConsentimiento) ?? false;
+
+  /// Anota en Collection la decisión sobre el rastreo con el TEXTO EXACTO que se le mostró
+  /// (categoría `rastreo`). Va con la persona y la instalación: el pulso lo busca por persona,
+  /// así que se llama después de [enrolar]. Nunca rompe a la app: devuelve si se pudo anotar.
+  Future<bool> anotarConsentimiento({required bool concedido, required String textoMostrado, int versionDelTexto = 1}) async {
+    try {
+      await apiDelNucleo.anotarConsentimiento(
+        categoria: 'rastreo',
+        concedido: concedido,
+        textoMostrado: textoMostrado,
+        versionDelTexto: versionDelTexto,
+        sujetoId: _sujetoId,
+        instalacionId: instalacionId,
+        plataforma: defaultTargetPlatform.name,
+      );
+      await (await SharedPreferences.getInstance()).setBool(_claveConsentimiento, concedido);
+      return true;
+    } catch (e) {
+      debugPrint('HzRastreo · no se pudo anotar el consentimiento: $e');
+      return false;
+    }
+  }
+
   /// arranque de la aplicación.
   Future<String?> iniciar() async {
     // UNA SOLA CAPTURA VIVA POR PROCESO: si otro `Rastreo` de este proceso sigue corriendo (la

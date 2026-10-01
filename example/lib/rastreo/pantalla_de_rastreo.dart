@@ -127,6 +127,11 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
   static const _clavePermisoAhoraNo = 'ejemplo.rastreo.permisoAhoraNo';
   bool _permisoYaPreguntado = false;
 
+  /// El texto al que la persona dijo «sí»: se anota en Collection como consentimiento al arrancar
+  /// (ya enrolada, porque el pulso lo busca por persona). 🔴 El permiso del sistema no basta:
+  /// antes el «Sí, registrar» no quedaba anotado y el pulso salía «sin consentimiento» (2026-10-01).
+  String? _textoConsentido;
+
   Future<void> _permisoAlAbrir() async {
     if (_permisoYaPreguntado) return;
     _permisoYaPreguntado = true;
@@ -137,9 +142,19 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
     final pol = c.permiso;
     if (pol.momento != MomentoDelPermiso.arranque) return;
     var p = await Geolocator.checkPermission();
-    if (p == LocationPermission.always) {
-      await _arrancarSolo();
-      return;
+    final yaAnotado = await r.consentimientoAnotado();
+    final textoDeLaPregunta = '${pol.textos.titulo}\n${pol.textos.cuerpo}';
+    if (p == LocationPermission.always || p == LocationPermission.whileInUse) {
+      // el sistema ya dio permiso, pero si nunca quedó anotado A QUÉ dijo que sí, se pregunta UNA vez
+      if (!yaAnotado && pol.preguntaBlanda) {
+        final si = await _preguntar(pol.textos.titulo, pol.textos.cuerpo, pol.textos.aceptar, pol.textos.ahoraNo);
+        if (si != true) return;
+        _textoConsentido = textoDeLaPregunta;
+      }
+      if (p == LocationPermission.always) {
+        await _arrancarSolo();
+        return;
+      }
     }
     final prefs = await SharedPreferences.getInstance();
     final ultimo = prefs.getInt(_clavePermisoAhoraNo);
@@ -158,6 +173,7 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
         await prefs.setInt(_clavePermisoAhoraNo, DateTime.now().millisecondsSinceEpoch);
         return;
       }
+      _textoConsentido = textoDeLaPregunta;
     }
     if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
     if (p == LocationPermission.whileInUse && mounted) {
@@ -175,6 +191,8 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
     final r = _rastreo;
     if (r == null) return;
     if (r.sujetoId == null) await r.enrolar(sujetoId: widget.sujeto);
+    final texto = _textoConsentido;
+    if (texto != null && await r.anotarConsentimiento(concedido: true, textoMostrado: texto)) _textoConsentido = null;
     final no = await r.iniciar();
     if (no != null && mounted) setState(() => _aviso = t.noArranco(no));
     await _refrescar();
