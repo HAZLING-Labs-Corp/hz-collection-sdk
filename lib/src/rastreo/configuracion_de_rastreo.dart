@@ -36,6 +36,7 @@ class ConfiguracionDeRastreo {
     this.permiso = permisoPorOmision,
     this.despertarSeg = 3,
     this.despertarAceleracion = 1.0,
+    this.presenciaQuietoSeg = 30,
   });
 
   /// Si hay algo que medir. Sin perfil vigente, el servicio manda `false`.
@@ -73,6 +74,9 @@ class ConfiguracionDeRastreo {
   /// enciende el GPS preciso. Dato del perfil, no constante: mientras se desarrolla, 3 s.
   final int despertarSeg;
   final double despertarAceleracion;
+
+  /// CL-38 · cada cuántos segundos repite su última posición estando quieto (0 = no repite).
+  final int presenciaQuietoSeg;
 
   static const pisoDespertarSeg = 1;
   static const techoDespertarSeg = 60;
@@ -157,6 +161,7 @@ class ConfiguracionDeRastreo {
           ? ((((j['despertar'] as Map)['seg']) is num ? ((j['despertar'] as Map)['seg'] as num).round() : 3)
               .clamp(pisoDespertarSeg, techoDespertarSeg))
           : 3,
+      presenciaQuietoSeg: (j['presenciaQuietoSeg'] is num ? (j['presenciaQuietoSeg'] as num).round() : 30).clamp(0, 86400),
       despertarAceleracion: j['despertar'] is Map && (j['despertar'] as Map)['aceleracion'] is num
           ? (((j['despertar'] as Map)['aceleracion'] as num).toDouble()).clamp(0.3, 10.0)
           : 1.0,
@@ -173,6 +178,7 @@ class ConfiguracionDeRastreo {
         'estadoForzado': estadoForzado,
         'permiso': permiso.toJson(),
         'despertar': {'seg': despertarSeg, 'aceleracion': despertarAceleracion},
+        'presenciaQuietoSeg': presenciaQuietoSeg,
         'cadencia': [for (final f in cadencia) {...f.toJson(), 'si': _siCrudo(f.si)}],
       };
 

@@ -138,7 +138,8 @@ class CapturaPropia implements CapturaDeRastreo {
   DetectorDeMovimiento? _detector;
   StreamSubscription<Position>? _flujo;
   StreamSubscription<TipoDeActividad>? _actividad;
-  StreamSubscription<UserAccelerometerEvent>? _acel;
+  StreamSubscription<AccelerometerEvent>? _acel;
+  double _gx = 0, _gy = 0, _gz = 0;
   int? _movDesde;
   int _ultimoMov = 0;
   Timer? _tic;
@@ -190,7 +191,7 @@ class CapturaPropia implements CapturaDeRastreo {
     // CL-37 · DESPERTAR POR ACELERÓMETRO: quieto y con el GPS apagado, un teléfono que se mueve
     // `despertarSeg` segundos seguidos enciende el GPS preciso (la actividad del sistema y la
     // salida de zona llegan tarde, o no llegan sin permiso). Sólo se mira estando quieto.
-    _acel = userAccelerometerEventStream(samplingPeriod: SensorInterval.normalInterval).listen(
+    _acel = accelerometerEventStream(samplingPeriod: SensorInterval.normalInterval).listen(
       _alAcelerometro,
       onError: (Object e) => _eventos.add(ProblemaDeCaptura('acelerómetro: $e')),
     );
@@ -225,14 +226,20 @@ class CapturaPropia implements CapturaDeRastreo {
 
   /// El movimiento cuenta si pasa de [ConfiguracionDeRastreo.despertarAceleracion]; un hueco de
   /// hasta 1,5 s no corta la racha (caminar tiene instantes de calma entre paso y paso).
-  void _alAcelerometro(UserAccelerometerEvent e) {
+  void _alAcelerometro(AccelerometerEvent e) {
+    // Muchos teléfonos (el Honor LLY-LX3 entre ellos) no traen el sensor «sin gravedad»: se usa el
+    // acelerómetro común y se le resta la gravedad con un filtro que la sigue lenta (alfa 0,9).
+    _gx = 0.9 * _gx + 0.1 * e.x;
+    _gy = 0.9 * _gy + 0.1 * e.y;
+    _gz = 0.9 * _gz + 0.1 * e.z;
+    final lx = e.x - _gx, ly = e.y - _gy, lz = e.z - _gz;
     final d = _detector;
     if (d == null || d.estado != EstadoDeMovimiento.quieto) {
       _movDesde = null;
       return;
     }
     final ahora = DateTime.now().millisecondsSinceEpoch;
-    final mag = math.sqrt(e.x * e.x + e.y * e.y + e.z * e.z);
+    final mag = math.sqrt(lx * lx + ly * ly + lz * lz);
     if (mag >= _config.despertarAceleracion) {
       _ultimoMov = ahora;
       _movDesde ??= ahora;

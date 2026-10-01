@@ -28,7 +28,9 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
+import 'package:battery_plus/battery_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleListener;
@@ -340,6 +342,10 @@ class Rastreo {
 
     final motivo = await _aplicarConfiguracion(releer: false);
     unawaited(_intentarEnviar());
+    if (motivo == null) {
+      unawaited(_presenciaQuieta(primera: true));
+      _relojDePresencia ??= Timer.periodic(const Duration(seconds: 5), (_) => unawaited(_presenciaQuieta()));
+    }
     return motivo;
   }
 
@@ -364,6 +370,8 @@ class Rastreo {
   Future<void> detener() async {
     await captura.detener();
     _reloj?.cancel();
+    _relojDePresencia?.cancel();
+    _relojDePresencia = null;
     _reloj = null;
     _despertador?.cancel();
     _despertador = null;
@@ -413,6 +421,62 @@ class Rastreo {
   /// La presencia sale cada `presenciaSeg` de la fila de cadencia que manda (0 → no sale): la
   /// cadencia es dato, el SDK sólo la cumple. Es la que alimenta la «Flota en vivo» (§4.2).
   /// Sin red o con error no se reintenta: la siguiente ya lleva una posición más nueva.
+  Timer? _relojDePresencia;
+
+  /// PRESENCIA SIN RUTA: la flota tiene que decir DÓNDE está un aparato aunque no haya empezado a
+  /// moverse ni a grabar. Al arrancar manda una vez la posición conocida, y mientras está quieto
+  /// (la captura grabando nada, GPS apagado) repite esa posición cada `presenciaSeg` de la fila que
+  /// manda —o su `latidoMin` si la fila no tiene presencia—, nunca menos de 15 s. Es una lectura
+  /// de caché del sistema: no prende el GPS.
+  Future<void> _presenciaQuieta({bool primera = false}) async {
+    final fila = captura.cadencia;
+    final base = fila.presenciaSeg > 0
+        ? fila.presenciaSeg
+        : (_config.presenciaQuietoSeg > 0 ? _config.presenciaQuietoSeg : (fila.latidoMin ?? 30) * 60);
+    final cada = math.max(10, base);
+    final ahora = DateTime.now().millisecondsSinceEpoch;
+    if (kDebugMode || MedidorDeHilo.activo) {
+      if (ahora - _ultimoRastroDePresencia > 20000) {
+        _ultimoRastroDePresencia = ahora;
+        debugPrint('HzRastreoPresencia activo=${_config.activo} capturaActiva=${captura.activa} captura=${captura.nombre} estado=${captura.estado.name} fila=${fila.estado} presenciaSeg=${fila.presenciaSeg} cada=$cada desdeLaUltima=${(ahora - _presenciaT) ~/ 1000}s');
+      }
+    }
+    if (!_config.activo || !captura.activa) return;
+    if (!primera && captura.estado == EstadoDeMovimiento.rodando) return; // la manda cada punto
+    if (!primera && ahora - _presenciaT < cada * 1000) return;
+    try {
+      final p = await Geolocator.getLastKnownPosition() ??
+          await Geolocator.getCurrentPosition(
+              locationSettings: const LocationSettings(accuracy: LocationAccuracy.low, timeLimit: Duration(seconds: 10)));
+      int bat = -1;
+      try {
+        bat = await Battery().batteryLevel;
+      } catch (_) {}
+      _presenciaT = ahora;
+      final r = await api.enviarPresencia({
+        'instalacionId': instalacionId,
+        't': ahora,
+        'lat': p.latitude,
+        'lon': p.longitude,
+        'acc': p.accuracy < 0 ? 0 : p.accuracy,
+        'v': p.speed < 0 ? 0 : p.speed,
+        'h': (p.hasHeading && p.heading >= 0 && p.heading < 360) ? p.heading : PuntoDeRastreo.rumboDesconocido,
+        'estado': captura.estado == EstadoDeMovimiento.rodando ? 'rodando' : 'detenido',
+        'bat': (bat < 0 || bat > 100) ? -1 : bat,
+      });
+      if (!r.aceptado) _anotarProblema('presencia: ${r.codigo ?? 'sin red'}');
+    } catch (e) {
+      // se anota una vez por minuto como mucho: un error que se repite cada 5 s llenaría el diagnóstico
+      if (DateTime.now().millisecondsSinceEpoch - _ultimoAvisoDePresencia > 60000) {
+        _ultimoAvisoDePresencia = DateTime.now().millisecondsSinceEpoch;
+        _anotarProblema('presencia sin posición: $e');
+      }
+    }
+  }
+
+  int _ultimoAvisoDePresencia = 0;
+  int _ultimoRastroDePresencia = 0;
+
   Future<void> _mandarPresencia(PuntoDeRastreo p) async {
     final cada = captura.cadencia.presenciaSeg;
     if (cada <= 0) return;
