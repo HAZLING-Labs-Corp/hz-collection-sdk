@@ -396,4 +396,25 @@ class TextosDeRastreoEs extends TextosDeRastreo {
   @override
   String get motoExplicacion =>
       'Una moto por las calles reales desde aquí hasta El Silencio y de vuelta: 20 a 60 km/h, semáforos cada ~1,2 km, un minuto en el destino.';
+
+  @override
+  String get simMedioAPie => 'A pie';
+
+  @override
+  String get simMedioDosRuedas => 'Moto';
+
+  @override
+  String get simMedioCarro => 'Carro';
+
+  @override
+  String simMinutos(int n) {
+    return '$n min';
+  }
+
+  @override
+  String get simularRecorridoReal => 'Simular recorrido';
+
+  @override
+  String get simRealExplicacion =>
+      'Una vuelta por las calles reales desde donde está el teléfono, del medio y la duración que elijas: velocidades creíbles, semáforos, y parado al salir y al volver.';
 }

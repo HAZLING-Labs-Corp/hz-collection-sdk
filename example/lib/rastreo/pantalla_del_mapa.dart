@@ -28,7 +28,6 @@ class _PantallaDelMapaState extends State<PantallaDelMapa> {
   ml.MapController? _mapa;
   String? _estilo;
   StreamSubscription<void>? _sub;
-  StreamSubscription<Position>? _yo;
   Position? _posicion;
   Timer? _reloj;
   bool _seguir = true;
@@ -60,29 +59,24 @@ class _PantallaDelMapaState extends State<PantallaDelMapa> {
   @override
   void dispose() {
     _sub?.cancel();
-    _yo?.cancel();
     _reloj?.cancel();
     super.dispose();
   }
 
-  /// El punto «aquí estoy» no depende de que el rastreo haya grabado algo: mientras el mapa está
-  /// abierto se escucha la posición del teléfono (primer plano, sin costo de fondo).
+  /// 🔴 EL MAPA NO ABRE SU PROPIO FLUJO DE GPS. En Android geolocator sólo sostiene UN flujo: abrir
+  /// otro desde la pantalla CANCELA el del SDK, y el detector se queda sin lecturas precisas (medido
+  /// el 2026-10-01 con la moto simulada: «detenido» a 25 km/h, lotes parados, línea recta en la
+  /// consola). «Aquí estoy» sale de la última posición conocida al abrir y, después, del último punto
+  /// que el SDK grabó (cada 5-10 s rodando).
   Future<void> _seguirMiPosicion() async {
     try {
       final p = await Geolocator.checkPermission();
       if (p != LocationPermission.always && p != LocationPermission.whileInUse) return;
       final ultima = await Geolocator.getLastKnownPosition();
-      if (mounted && ultima != null) {
+      if (mounted && ultima != null && widget.historial.puntos.isEmpty) {
         setState(() => _posicion = ultima);
         _centrarSiSigue();
       }
-      _yo = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 2),
-      ).listen((pos) {
-        if (!mounted) return;
-        setState(() => _posicion = pos);
-        _centrarSiSigue();
-      }, onError: (Object _) {});
     } catch (_) {}
   }
 
@@ -92,7 +86,7 @@ class _PantallaDelMapaState extends State<PantallaDelMapa> {
     if (_ajustando || pts.length < 3 || pts.length - _ajustadoConPuntos < (_calles == null ? 1 : 6)) return;
     _ajustando = true;
     final n = pts.length;
-    final r = await ajustarACalles(List.of(pts));
+    final r = await ajustarACalles(List.of(pts), medio: widget.rastreo?.configuracion.medio);
     _ajustando = false;
     if (!mounted) return;
     _ajustadoConPuntos = n;
@@ -100,10 +94,22 @@ class _PantallaDelMapaState extends State<PantallaDelMapa> {
   }
 
   ml.Position? _donde() {
-    final pos = _posicion;
-    if (pos != null) return ml.Position(pos.longitude, pos.latitude);
     final p = widget.historial.puntos;
-    return p.isEmpty ? null : ml.Position(p.last.lon, p.last.lat);
+    if (p.isNotEmpty) return ml.Position(p.last.lon, p.last.lat);
+    final pos = _posicion;
+    return pos == null ? null : ml.Position(pos.longitude, pos.latitude);
+  }
+
+  /// El rumbo para girar la figura: el del último punto grabado (si lo trae), si no el de la posición.
+  double _rumbo() {
+    final p = widget.historial.puntos;
+    if (p.length >= 2) {
+      final a = p[p.length - 2], b = p.last;
+      final dy = b.lat - a.lat, dx = (b.lon - a.lon) * math.cos(a.lat * math.pi / 180);
+      if (dx.abs() + dy.abs() > 1e-7) return (math.atan2(dx, dy) * 180 / math.pi + 360) % 360;
+    }
+    final h = _posicion?.heading ?? 0;
+    return h < 0 ? 0 : h;
   }
 
   void _centrarSiSigue() {
@@ -193,13 +199,13 @@ class _PantallaDelMapaState extends State<PantallaDelMapa> {
                             child: const Icon(Icons.flag, color: Color(0xFF444B55), size: 26),
                           ),
                         if (donde != null)
-                          (widget.rastreo?.captura.estado == EstadoDeMovimiento.rodando || (_posicion?.speed ?? 0) > 1.0)
+                          (widget.rastreo?.captura.estado != EstadoDeMovimiento.quieto && pts.isNotEmpty && pts.last.v > 0.5)
                               // rodando: la figura desde arriba, girando con el rumbo, como un navegador
                               ? ml.Marker(
                                   point: donde,
                                   size: const Size(48, 48),
                                   child: Transform.rotate(
-                                    angle: ((_posicion?.heading ?? 0) < 0 ? 0 : (_posicion?.heading ?? 0)) * math.pi / 180,
+                                    angle: _rumbo() * math.pi / 180,
                                     child: _FiguraDesdeArriba(widget.rastreo?.configuracion.medio),
                                   ),
                                 )

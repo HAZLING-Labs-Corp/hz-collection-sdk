@@ -771,6 +771,42 @@ abstract class TextosDeRastreo {
   /// In es, this message translates to:
   /// **'Una moto por las calles reales desde aquí hasta El Silencio y de vuelta: 20 a 60 km/h, semáforos cada ~1,2 km, un minuto en el destino.'**
   String get motoExplicacion;
+
+  /// No description provided for @simMedioAPie.
+  ///
+  /// In es, this message translates to:
+  /// **'A pie'**
+  String get simMedioAPie;
+
+  /// No description provided for @simMedioDosRuedas.
+  ///
+  /// In es, this message translates to:
+  /// **'Moto'**
+  String get simMedioDosRuedas;
+
+  /// No description provided for @simMedioCarro.
+  ///
+  /// In es, this message translates to:
+  /// **'Carro'**
+  String get simMedioCarro;
+
+  /// No description provided for @simMinutos.
+  ///
+  /// In es, this message translates to:
+  /// **'{n} min'**
+  String simMinutos(int n);
+
+  /// No description provided for @simularRecorridoReal.
+  ///
+  /// In es, this message translates to:
+  /// **'Simular recorrido'**
+  String get simularRecorridoReal;
+
+  /// No description provided for @simRealExplicacion.
+  ///
+  /// In es, this message translates to:
+  /// **'Una vuelta por las calles reales desde donde está el teléfono, del medio y la duración que elijas: velocidades creíbles, semáforos, y parado al salir y al volver.'**
+  String get simRealExplicacion;
 }
 
 class _TextosDeRastreoDelegate extends LocalizationsDelegate<TextosDeRastreo> {

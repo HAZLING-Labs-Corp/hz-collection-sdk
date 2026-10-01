@@ -13,7 +13,6 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:hz_collection_sdk/hz_collection_sdk.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -294,10 +293,10 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
         }
       });
 
-  Future<void> _simularMoto() => _simularPorCalles(MedioDePrueba.moto, elSilencio);
-  Future<void> _simularCaminata() => _simularPorCalles(MedioDePrueba.aPie, null);
+  MedioDePrueba _simMedio = MedioDePrueba.moto;
+  int _simMinutos = 10;
 
-  Future<void> _simularPorCalles(MedioDePrueba medio, LatLng? destino) => _hacer(() async {
+  Future<void> _simularPorCalles() => _hacer(() async {
         final sim = _simulacion;
         if (sim != null && sim.corriendo) {
           await Simulador.detener();
@@ -307,7 +306,7 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
             await Geolocator.getCurrentPosition(
                 locationSettings: const LocationSettings(accuracy: LocationAccuracy.best, timeLimit: Duration(seconds: 15)));
         final ruta = await recorridoDePrueba(
-            lat: pos.latitude, lon: pos.longitude, quietoMin: _rastreo!.configuracion.quietoMin, medio: medio, destino: destino);
+            lat: pos.latitude, lon: pos.longitude, quietoMin: _rastreo!.configuracion.quietoMin, medio: _simMedio, minutos: _simMinutos);
         final txt = t;
         if (ruta == null) {
           setState(() => _aviso = txt.caminataSinRuta);
@@ -478,20 +477,28 @@ class _PantallaDeRastreoState extends State<PantallaDeRastreo> {
     return _Seccion(
       titulo: t.seccionSimular,
       filas: [
-        _Fila(t.motoExplicacion, '', largo: true),
-        _Fila(t.caminataExplicacion, '', largo: true),
+        _Fila(t.simRealExplicacion, '', largo: true),
         if (corriendo) _Fila(t.simulando(s.indice, s.total), ''),
       ],
       acciones: [
-        FilledButton.icon(
-          onPressed: _ocupado ? null : _simularMoto,
-          icon: Icon(corriendo ? Icons.stop : Icons.two_wheeler),
-          label: Text(corriendo ? t.detenerSimulacion : t.simularMoto),
+        SegmentedButton<MedioDePrueba>(
+          segments: [
+            ButtonSegment(value: MedioDePrueba.aPie, icon: const Icon(Icons.directions_walk), label: Text(t.simMedioAPie)),
+            ButtonSegment(value: MedioDePrueba.moto, icon: const Icon(Icons.two_wheeler), label: Text(t.simMedioDosRuedas)),
+            ButtonSegment(value: MedioDePrueba.carro, icon: const Icon(Icons.directions_car), label: Text(t.simMedioCarro)),
+          ],
+          selected: {_simMedio},
+          onSelectionChanged: corriendo ? null : (v) => setState(() => _simMedio = v.first),
         ),
-        OutlinedButton.icon(
-          onPressed: _ocupado || corriendo ? null : _simularCaminata,
-          icon: const Icon(Icons.directions_walk),
-          label: Text(t.simularCaminata),
+        SegmentedButton<int>(
+          segments: [for (final n in const [5, 10, 20]) ButtonSegment(value: n, label: Text(t.simMinutos(n)))],
+          selected: {_simMinutos},
+          onSelectionChanged: corriendo ? null : (v) => setState(() => _simMinutos = v.first),
+        ),
+        FilledButton.icon(
+          onPressed: _ocupado ? null : _simularPorCalles,
+          icon: Icon(corriendo ? Icons.stop : Icons.route),
+          label: Text(corriendo ? t.detenerSimulacion : t.simularRecorridoReal),
         ),
         OutlinedButton.icon(
           onPressed: _ocupado || corriendo ? null : _simular,

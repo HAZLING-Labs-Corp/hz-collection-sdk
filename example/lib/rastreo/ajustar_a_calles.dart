@@ -54,7 +54,15 @@ class RecorridoAjustado {
 }
 
 /// `null` si el servicio no contesta o no encuentra calle (se dibuja el recorrido crudo).
-Future<RecorridoAjustado?> ajustarACalles(List<PuntoDelMapa> puntos, {http.Client? cliente}) async {
+/// El perfil del enrutador según el medio que mide el perfil (dato `rastreo.medio`).
+String costingDe(String? medio) => switch (medio) {
+      'dosRuedas' => 'motorcycle',
+      'bici' => 'bicycle',
+      'carro' || 'bus' => 'auto',
+      _ => 'pedestrian',
+    };
+
+Future<RecorridoAjustado?> ajustarACalles(List<PuntoDelMapa> puntos, {http.Client? cliente, String? medio}) async {
   // un solo tramo por pedido: se parte donde hay un hueco de más de 5 min (otra caminata)
   var ini = puntos.length - 1;
   while (ini > 0 && puntos[ini].t - puntos[ini - 1].t < 5 * 60 * 1000) {
@@ -81,7 +89,7 @@ Future<RecorridoAjustado?> ajustarACalles(List<PuntoDelMapa> puntos, {http.Clien
           headers: {'content-type': 'application/json'},
           body: jsonEncode({
             'shape': [for (final p in sel) {'lat': p.lat, 'lon': p.lon}],
-            'costing': 'pedestrian',
+            'costing': costingDe(medio),
             'shape_match': 'map_snap',
             'trace_options': {'search_radius': 40, 'gps_accuracy': 20},
           }),

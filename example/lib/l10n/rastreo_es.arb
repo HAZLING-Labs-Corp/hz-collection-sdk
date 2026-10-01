@@ -148,5 +148,13 @@
   "caminataSinRuta": "No se pudo armar la caminata: el enrutador no contestó o no hay posición.",
 
   "simularMoto": "Simular moto: ir a El Silencio y volver",
-  "motoExplicacion": "Una moto por las calles reales desde aquí hasta El Silencio y de vuelta: 20 a 60 km/h, semáforos cada ~1,2 km, un minuto en el destino."
+  "motoExplicacion": "Una moto por las calles reales desde aquí hasta El Silencio y de vuelta: 20 a 60 km/h, semáforos cada ~1,2 km, un minuto en el destino.",
+
+  "simMedioAPie": "A pie",
+  "simMedioDosRuedas": "Moto",
+  "simMedioCarro": "Carro",
+  "simMinutos": "{n} min",
+  "@simMinutos": { "placeholders": { "n": { "type": "int" } } },
+  "simularRecorridoReal": "Simular recorrido",
+  "simRealExplicacion": "Una vuelta por las calles reales desde donde está el teléfono, del medio y la duración que elijas: velocidades creíbles, semáforos, y parado al salir y al volver."
 }
