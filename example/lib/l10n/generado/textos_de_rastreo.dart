@@ -682,6 +682,18 @@ abstract class TextosDeRastreo {
   /// **'Seguirme'**
   String get mapaSeguir;
 
+  /// No description provided for @mapaPantallaCompleta.
+  ///
+  /// In es, this message translates to:
+  /// **'Pantalla completa'**
+  String get mapaPantallaCompleta;
+
+  /// No description provided for @mapaSalirPantallaCompleta.
+  ///
+  /// In es, this message translates to:
+  /// **'Salir de pantalla completa'**
+  String get mapaSalirPantallaCompleta;
+
   /// No description provided for @mapaSinPuntos.
   ///
   /// In es, this message translates to:

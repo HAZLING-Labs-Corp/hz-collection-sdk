@@ -43,7 +43,9 @@ class HistorialDeRecorrido {
   Stream<void> get cambios => _cambios.stream;
 
   static Future<HistorialDeRecorrido> abrir() async {
-    final h = HistorialDeRecorrido._(File('${Directory.systemTemp.path}/recorrido_de_ejemplo.jsonl'));
+    // 🔴 NO en la carpeta temporal: Android la vacía en cada reinstalación y el mapa quedaba en blanco
+    // (2026-10-01). La carpeta de la app (la madre de la temporal) sobrevive a `install -r`.
+    final h = HistorialDeRecorrido._(File('${Directory.systemTemp.parent.path}/recorrido_de_ejemplo.jsonl'));
     await h._cargar();
     return h;
   }

@@ -124,6 +124,8 @@
   "mapaTitulo": "Mi recorrido",
   "mapaBorrar": "Borrar el recorrido",
   "mapaSeguir": "Seguirme",
+  "mapaPantallaCompleta": "Pantalla completa",
+  "mapaSalirPantallaCompleta": "Salir de pantalla completa",
   "mapaSinPuntos": "Esperando tu primer punto. Empieza a caminar.",
   "mapaDistancia": "Distancia: {valor} {unidad}",
   "@mapaDistancia": { "placeholders": { "valor": { "type": "String" }, "unidad": { "type": "String" } } },

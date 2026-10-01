@@ -334,6 +334,12 @@ class TextosDeRastreoEs extends TextosDeRastreo {
   String get mapaSeguir => 'Seguirme';
 
   @override
+  String get mapaPantallaCompleta => 'Pantalla completa';
+
+  @override
+  String get mapaSalirPantallaCompleta => 'Salir de pantalla completa';
+
+  @override
   String get mapaSinPuntos => 'Esperando tu primer punto. Empieza a caminar.';
 
   @override

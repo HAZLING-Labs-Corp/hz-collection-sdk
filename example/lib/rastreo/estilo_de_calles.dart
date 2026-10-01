@@ -1,91 +1,23 @@
-/// EL ESTILO DE CALLES — el mismo de la consola web (`src/lib/flota/estilo-de-calles.ts`): sólo
-/// calles, en gris, bien definidas, con su nombre; sin edificios ni comercios. Vectorial, de los
-/// mosaicos de OpenFreeMap (sin llave). Cambiar de proveedor es cambiar este archivo.
+/// EL ESTILO DEL MAPA — GENERADO desde la consola web (`src/lib/flota/estilo-de-calles.ts` del
+/// front de Collection): el mismo mapa en la consola y en el teléfono, nunca dos estilos que se
+/// separen. 🔴 No se edita a mano: se cambia el `.ts` y se vuelve a generar con
+///
+///   npx esbuild src/lib/flota/estilo-de-calles.ts --format=esm --outfile=/tmp/estilo.js &&
+///   node --input-type=module -e "import('/tmp/estilo.js').then(m=>process.stdout.write(JSON.stringify(m.estiloDeCalles())))"
+///
+/// y se pega el JSON abajo. Datos de OpenStreetMap por OpenFreeMap (sin llave).
 library;
 
 import 'dart:convert';
 import 'dart:io';
 
-const _fondo = '#f1f1ef';
-const _agua = '#dfe3e6';
-const _borde = '#c9ccd0';
-const _via = '#ffffff';
-const _texto = '#6d7278';
+const _estiloGenerado = r'''{"version":8,"glyphs":"https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf","sources":{"mapa":{"type":"vector","url":"https://tiles.openfreemap.org/planet","attribution":"© OpenStreetMap · OpenFreeMap"}},"layers":[{"id":"base-fondo","type":"background","paint":{"background-color":"#f5f5f3"}},{"id":"uso-urbano","type":"fill","source":"mapa","source-layer":"landuse","filter":["in",["get","class"],["literal",["residential","suburb","neighbourhood","commercial","retail","industrial"]]],"paint":{"fill-color":"#efefec"}},{"id":"uso-hospital","type":"fill","source":"mapa","source-layer":"landuse","minzoom":13,"filter":["==",["get","class"],"hospital"],"paint":{"fill-color":"#f6e3e3"}},{"id":"uso-escuela","type":"fill","source":"mapa","source-layer":"landuse","minzoom":13,"filter":["in",["get","class"],["literal",["school","university","college","kindergarten"]]],"paint":{"fill-color":"#f3ece0"}},{"id":"verde-cobertura","type":"fill","source":"mapa","source-layer":"landcover","filter":["in",["get","class"],["literal",["wood","grass","farmland","wetland"]]],"paint":{"fill-color":["match",["get","class"],"wood","#c6e8cc","#d3eed6"],"fill-opacity":0.75}},{"id":"verde-parque","type":"fill","source":"mapa","source-layer":"park","paint":{"fill-color":"#d3eed6","fill-opacity":0.85}},{"id":"agua","type":"fill","source":"mapa","source-layer":"water","paint":{"fill-color":"#aad3f2"}},{"id":"rio","type":"line","source":"mapa","source-layer":"waterway","minzoom":12,"paint":{"line-color":"#aad3f2","line-width":["interpolate",["linear"],["zoom"],12,0.8,17,3]}},{"id":"edificio","type":"fill","source":"mapa","source-layer":"building","minzoom":15,"paint":{"fill-color":"#e3e3e0","fill-outline-color":"#d3d3cf","fill-opacity":["interpolate",["linear"],["zoom"],15,0,15.6,1]}},{"id":"tunel-menor-borde","type":"line","source":"mapa","source-layer":"transportation","minzoom":13,"filter":["all",["in",["get","class"],["literal",["tertiary","minor","residential","unclassified","living_street","service"]]],["==",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"butt","line-join":"round"},"paint":{"line-color":"#d6d7d9","line-width":["interpolate",["exponential",1.6],["zoom"],11,1.19,12,3.4,16,11,19,26],"line-dasharray":[0.6,0.4]}},{"id":"tunel-menor","type":"line","source":"mapa","source-layer":"transportation","minzoom":13,"filter":["all",["in",["get","class"],["literal",["tertiary","minor","residential","unclassified","living_street","service"]]],["==",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"round","line-join":"round"},"paint":{"line-color":"#ffffff","line-width":["interpolate",["exponential",1.6],["zoom"],11,0.84,12,2.4,16,9.4,19,23],"line-opacity":0.55}},{"id":"tunel-media-borde","type":"line","source":"mapa","source-layer":"transportation","minzoom":10,"filter":["all",["in",["get","class"],["literal",["primary","secondary"]]],["==",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"butt","line-join":"round"},"paint":{"line-color":"#d6d7d9","line-width":["interpolate",["exponential",1.6],["zoom"],11,1.75,12,5,16,15,19,34],"line-dasharray":[0.6,0.4]}},{"id":"tunel-media","type":"line","source":"mapa","source-layer":"transportation","minzoom":10,"filter":["all",["in",["get","class"],["literal",["primary","secondary"]]],["==",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"round","line-join":"round"},"paint":{"line-color":"#ffffff","line-width":["interpolate",["exponential",1.6],["zoom"],11,1.3299999999999998,12,3.8,16,13,19,31],"line-opacity":0.55}},{"id":"tunel-mayor-borde","type":"line","source":"mapa","source-layer":"transportation","minzoom":7,"filter":["all",["in",["get","class"],["literal",["motorway","trunk"]]],["==",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"butt","line-join":"round"},"paint":{"line-color":"#f1c95d","line-width":["interpolate",["exponential",1.6],["zoom"],11,2.275,12,6.5,16,18,19,38],"line-dasharray":[0.6,0.4]}},{"id":"tunel-mayor","type":"line","source":"mapa","source-layer":"transportation","minzoom":7,"filter":["all",["in",["get","class"],["literal",["motorway","trunk"]]],["==",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"round","line-join":"round"},"paint":{"line-color":"#fde9a6","line-width":["interpolate",["exponential",1.6],["zoom"],11,1.75,12,5,16,16,19,35],"line-opacity":0.55}},{"id":"sendero","type":"line","source":"mapa","source-layer":"transportation","minzoom":14,"filter":["all",["in",["get","class"],["literal",["path"]]],["!=",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"butt","line-join":"round"},"paint":{"line-color":"#c9c3b8","line-width":["interpolate",["linear"],["zoom"],14,0.8,16,1.4,19,3],"line-dasharray":[2,1.2]}},{"id":"camino-borde","type":"line","source":"mapa","source-layer":"transportation","minzoom":12,"filter":["all",["in",["get","class"],["literal",["track"]]],["!=",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"round","line-join":"round"},"paint":{"line-color":"#d6d7d9","line-width":["interpolate",["exponential",1.6],["zoom"],11,0.84,12,2.4,16,7.5,19,18]}},{"id":"camino","type":"line","source":"mapa","source-layer":"transportation","minzoom":12,"filter":["all",["in",["get","class"],["literal",["track"]]],["!=",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"round","line-join":"round"},"paint":{"line-color":"#ffffff","line-width":["interpolate",["exponential",1.6],["zoom"],11,0.5249999999999999,12,1.5,16,5.8,19,15]}},{"id":"via-menor-borde","type":"line","source":"mapa","source-layer":"transportation","minzoom":13,"filter":["all",["in",["get","class"],["literal",["tertiary","minor","residential","unclassified","living_street","service"]]],["!=",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"round","line-join":"round"},"paint":{"line-color":["case",["==",["get","brunnel"],"bridge"],"#b9bbbf","#d6d7d9"],"line-width":["interpolate",["exponential",1.6],["zoom"],11,1.19,12,3.4,16,11,19,26]}},{"id":"via-media-borde","type":"line","source":"mapa","source-layer":"transportation","minzoom":10,"filter":["all",["in",["get","class"],["literal",["primary","secondary"]]],["!=",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"round","line-join":"round"},"paint":{"line-color":["case",["==",["get","brunnel"],"bridge"],"#b9bbbf","#d6d7d9"],"line-width":["interpolate",["exponential",1.6],["zoom"],11,1.75,12,5,16,15,19,34]}},{"id":"via-mayor-borde","type":"line","source":"mapa","source-layer":"transportation","minzoom":7,"filter":["all",["in",["get","class"],["literal",["motorway","trunk"]]],["!=",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"round","line-join":"round"},"paint":{"line-color":["case",["==",["get","brunnel"],"bridge"],"#b9bbbf","#f1c95d"],"line-width":["interpolate",["exponential",1.6],["zoom"],11,2.275,12,6.5,16,18,19,38]}},{"id":"via-menor","type":"line","source":"mapa","source-layer":"transportation","minzoom":13,"filter":["all",["in",["get","class"],["literal",["tertiary","minor","residential","unclassified","living_street","service"]]],["!=",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"round","line-join":"round"},"paint":{"line-color":"#ffffff","line-width":["interpolate",["exponential",1.6],["zoom"],11,0.84,12,2.4,16,9.4,19,23]}},{"id":"via-media","type":"line","source":"mapa","source-layer":"transportation","minzoom":10,"filter":["all",["in",["get","class"],["literal",["primary","secondary"]]],["!=",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"round","line-join":"round"},"paint":{"line-color":"#ffffff","line-width":["interpolate",["exponential",1.6],["zoom"],11,1.3299999999999998,12,3.8,16,13,19,31]}},{"id":"via-mayor","type":"line","source":"mapa","source-layer":"transportation","minzoom":7,"filter":["all",["in",["get","class"],["literal",["motorway","trunk"]]],["!=",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"round","line-join":"round"},"paint":{"line-color":"#fde9a6","line-width":["interpolate",["exponential",1.6],["zoom"],11,1.75,12,5,16,16,19,35]}},{"id":"tren","type":"line","source":"mapa","source-layer":"transportation","minzoom":12,"filter":["all",["in",["get","class"],["literal",["rail","transit"]]],["!=",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"round","line-join":"round"},"paint":{"line-color":"#b7b9bd","line-width":1.4}},{"id":"tren-traviesas","type":"line","source":"mapa","source-layer":"transportation","minzoom":14,"filter":["all",["in",["get","class"],["literal",["rail","transit"]]],["!=",["get","brunnel"],"tunnel"]],"layout":{"line-cap":"butt","line-join":"round"},"paint":{"line-color":"#b7b9bd","line-width":5,"line-dasharray":[0.25,3]}},{"id":"rotulo-agua","type":"symbol","source":"mapa","source-layer":"water_name","minzoom":12,"layout":{"text-field":["coalesce",["get","name:es"],["get","name"]],"text-font":["Noto Sans Italic"],"text-size":12},"paint":{"text-color":"#4a7fb5","text-halo-color":"#ffffff","text-halo-width":1.2}},{"id":"rotulo-calle","type":"symbol","source":"mapa","source-layer":"transportation_name","minzoom":14.5,"filter":["!",["in","construction",["get","class"]]],"layout":{"symbol-placement":"line","text-field":["coalesce",["get","name:es"],["get","name"]],"text-font":["match",["get","class"],["motorway","trunk","primary"],["literal",["Noto Sans Bold"]],["literal",["Noto Sans Regular"]]],"text-size":["interpolate",["linear"],["zoom"],14.5,10,18,13],"text-letter-spacing":0.02,"text-max-angle":30},"paint":{"text-color":"#5f6368","text-halo-color":"#ffffff","text-halo-width":1.6}},{"id":"rotulo-lugar","type":"symbol","source":"mapa","source-layer":"poi","minzoom":15.5,"filter":["all",["has","name"],["in",["get","class"],["literal",["hospital","school","college","police","fire_station","place_of_worship","town_hall","stadium","shop","grocery","fuel","bank","pharmacy","park","railway","bus"]]]],"layout":{"text-field":["coalesce",["get","name:es"],["get","name"]],"text-font":["Noto Sans Regular"],"text-size":11,"text-max-width":8,"text-anchor":"top","text-padding":6},"paint":{"text-color":"#8a8e93","text-halo-color":"#ffffff","text-halo-width":1.4}},{"id":"rotulo-pico","type":"symbol","source":"mapa","source-layer":"mountain_peak","minzoom":12,"layout":{"text-field":["concat","▲ ",["coalesce",["get","name:es"],["get","name"]],["case",["has","ele"],["concat","\n",["to-string",["get","ele"]]," m"],""]],"text-font":["Noto Sans Regular"],"text-size":11},"paint":{"text-color":"#7a8a6e","text-halo-color":"#ffffff","text-halo-width":1.2}},{"id":"rotulo-zona","type":"symbol","source":"mapa","source-layer":"place","minzoom":11,"maxzoom":17,"filter":["in",["get","class"],["literal",["suburb","neighbourhood","quarter","city","town"]]],"layout":{"text-field":["coalesce",["get","name:es"],["get","name"]],"text-font":["Noto Sans Regular"],"text-size":["interpolate",["linear"],["zoom"],11,9,16,12],"text-transform":"uppercase","text-letter-spacing":0.1,"text-max-width":6},"paint":{"text-color":"#a3a7ac","text-halo-color":"#f5f5f3","text-halo-width":1.2}}]}''';
 
-dynamic _ancho(double z12, double z16, double z19) => [
-      'interpolate', ['exponential', 1.6], ['zoom'], 11, z12 * 0.35, 12, z12, 16, z16, 19, z19,
-    ];
+Map<String, dynamic> estiloDeCalles() => jsonDecode(_estiloGenerado) as Map<String, dynamic>;
 
-List<Map<String, dynamic>> _vias(String id, List<String> clases, List<double> borde, List<double> via, int minzoom) {
-  final filtro = [
-    'all',
-    ['in', ['get', 'class'], ['literal', clases]],
-    ['!=', ['get', 'brunnel'], 'tunnel'],
-  ];
-  Map<String, dynamic> capa(String sufijo, String color, List<double> a) => {
-        'id': '$id-$sufijo',
-        'type': 'line',
-        'source': 'calles',
-        'source-layer': 'transportation',
-        'minzoom': minzoom,
-        'filter': filtro,
-        'layout': {'line-cap': 'round', 'line-join': 'round'},
-        'paint': {'line-color': color, 'line-width': _ancho(a[0], a[1], a[2])},
-      };
-  return [capa('borde', _borde, borde), capa('via', _via, via)];
-}
-
-Map<String, dynamic> estiloDeCalles() => {
-      'version': 8,
-      'glyphs': 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
-      'sources': {
-        'calles': {'type': 'vector', 'url': 'https://tiles.openfreemap.org/planet'},
-      },
-      'layers': [
-        {'id': 'base-fondo', 'type': 'background', 'paint': {'background-color': _fondo}},
-        {'id': 'agua', 'type': 'fill', 'source': 'calles', 'source-layer': 'water', 'paint': {'fill-color': _agua}},
-        ..._vias('via-menor', ['tertiary', 'minor', 'service', 'residential', 'unclassified', 'living_street'], [3.4, 11, 26], [2.4, 9.4, 23], 13),
-        ..._vias('via-media', ['primary', 'secondary'], [5, 15, 34], [3.8, 13, 31], 11),
-        ..._vias('via-mayor', ['motorway', 'trunk'], [6.5, 18, 38], [5, 16, 35], 8),
-        {
-          'id': 'rotulo-calle',
-          'type': 'symbol',
-          'source': 'calles',
-          'source-layer': 'transportation_name',
-          'minzoom': 14.5,
-          'layout': {
-            'symbol-placement': 'line',
-            'text-field': ['coalesce', ['get', 'name:es'], ['get', 'name']],
-            'text-font': ['Noto Sans Regular'],
-            'text-size': ['interpolate', ['linear'], ['zoom'], 14.5, 10, 18, 13],
-            'text-max-angle': 30,
-          },
-          'paint': {'text-color': _texto, 'text-halo-color': '#ffffff', 'text-halo-width': 1.6},
-        },
-        {
-          'id': 'rotulo-zona',
-          'type': 'symbol',
-          'source': 'calles',
-          'source-layer': 'place',
-          'minzoom': 11,
-          'maxzoom': 17,
-          'filter': ['in', ['get', 'class'], ['literal', ['suburb', 'neighbourhood', 'quarter', 'city', 'town']]],
-          'layout': {
-            'text-field': ['coalesce', ['get', 'name:es'], ['get', 'name']],
-            'text-font': ['Noto Sans Regular'],
-            'text-size': ['interpolate', ['linear'], ['zoom'], 11, 9, 16, 12],
-            'text-transform': 'uppercase',
-            'text-letter-spacing': 0.1,
-            'text-max-width': 6,
-          },
-          'paint': {'text-color': '#a7abb0', 'text-halo-color': _fondo, 'text-halo-width': 1.2},
-        },
-      ],
-    };
-
-/// MapLibre nativo sólo lee el estilo por dirección: se escribe a un archivo y se pasa `file://`.
+/// MapLibre de Flutter recibe el estilo como archivo: se escribe en la carpeta temporal y se pasa su ruta.
 Future<String> archivoDelEstilo() async {
   final f = File('${Directory.systemTemp.path}/estilo_de_calles.json');
-  await f.writeAsString(jsonEncode(estiloDeCalles()));
+  await f.writeAsString(_estiloGenerado);
   return 'file://${f.path}';
 }
