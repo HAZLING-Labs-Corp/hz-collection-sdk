@@ -10,7 +10,15 @@
 ///   CONFIRMANDO ──(2 lecturas seguidas a más de arranqueKmh)──► RODANDO
 ///   CONFIRMANDO ──(3 min sin confirmar)──► QUIETO           (el GPS saltó, o fue al baño)
 ///   RODANDO ──(quietoMin sin moverse, o sin lecturas)──► QUIETO   (se apaga el GPS preciso)
+///   RODANDO ──(quietoMin con TODAS las lecturas en un radio de max(30 m, 2×acc mediana)
+///              y velocidad mediana < 1 m/s: ruido de mesa)──► QUIETO
 /// ```
+///
+/// 🔴 EL RUIDO DE MESA: un GPS sobre una mesa oscila unos metros y da v de 0 a 1,5 m/s. Con la
+/// regla vieja (cada lectura a más de 1 m/s o a 50 m del último reposo cuenta como movimiento)
+/// el ruido reinicia el reloj de «quieto» una y otra vez y el SDK queda «rodando» con el GPS
+/// preciso prendido (medido el 2026-10-01: Android lo marcó de alto consumo). La ventana de
+/// [_ruidoDeMesa] mira el conjunto, no la lectura suelta.
 ///
 /// En QUIETO el GPS preciso está APAGADO: se escucha una lectura de bajo consumo (antenas y
 /// wifi, cada 100 m) que sólo sirve para notar que salió de la zona. En CONFIRMANDO y
@@ -160,6 +168,12 @@ class DetectorDeMovimiento {
   int? _ultimaLectura;
   double _ultimaVelMs = 0;
   int? _quietoDesde;
+
+  /// Lecturas precisas desde que se rueda, para la ventana de ruido de mesa.
+  final List<Lectura> _ventana = [];
+  static const _topeDeVentana = 3000;
+  static const radioMinimoDeRuidoM = 30.0;
+  static const velocidadMedianaDeRuidoMs = 1.0;
   FilaDeCadencia fila = FilaDeCadencia.respaldo;
 
   Duration get intervalo => Duration(seconds: fila.muestreoSeg);
@@ -259,6 +273,9 @@ class DetectorDeMovimiento {
           estado = EstadoDeMovimiento.rodando;
           _ultimoMovimiento = l.t;
           _reposo = l;
+          _ventana
+            ..clear()
+            ..add(l);
           _ultimaGrabada = l.t;
           _filaCambio = _evaluar(l.t) || _filaCambio;
           if (fila.muestreoSeg <= 0) {
@@ -299,8 +316,15 @@ class DetectorDeMovimiento {
           _ultimoMovimiento = l.t;
           _reposo = l;
         }
+        _ventana.add(l);
+        if (_ventana.length > _topeDeVentana) _ventana.removeAt(0);
         if (l.t - (_ultimoMovimiento ?? l.t) >= _config.quieto.inMilliseconds) {
           return _aQuieto(l, 'quieto ${_config.quietoMin} min', vaciar: true);
+        }
+        if (_ruidoDeMesa(l.t)) {
+          _ultimoMovimiento = _ventana.first.t;
+          return _aQuieto(l, 'ruido de GPS en un radio chico durante ${_config.quietoMin} min',
+              vaciar: true);
         }
         if (fila.muestreoSeg <= 0) return _decision();
         final ultima = _ultimaGrabada;
@@ -340,6 +364,11 @@ class DetectorDeMovimiento {
         t - (_ultimoMovimiento ?? ultima) >= _config.quieto.inMilliseconds) {
       return _aQuieto(_anterior, 'sin moverse ni leer ${_config.quietoMin} min', vaciar: true);
     }
+    if (estado == EstadoDeMovimiento.rodando && _ruidoDeMesa(t)) {
+      _ultimoMovimiento = _ventana.first.t;
+      return _aQuieto(_anterior, 'ruido de GPS en un radio chico durante ${_config.quietoMin} min',
+          vaciar: true);
+    }
     if (estado == EstadoDeMovimiento.confirmando &&
         t - (_desdeConfirmando ?? t) > esperaDeConfirmacion.inMilliseconds) {
       return _aQuieto(_anterior, 'no se confirmó en ${esperaDeConfirmacion.inMinutes} min',
@@ -358,6 +387,7 @@ class DetectorDeMovimiento {
     _desdeConfirmando = null;
     _ultimoMovimiento = t;
     _reposo = null;
+    _ventana.clear();
     _ultimaGrabada = null;
     _filaCambio = _evaluar(t);
     return _decision(cambio: true, motivo: 'sigue el viaje de la captura anterior');
@@ -379,6 +409,7 @@ class DetectorDeMovimiento {
     _confirmaciones = 0;
     _desdeConfirmando = null;
     _reposo = null;
+    _ventana.clear();
     _ultimaGrabada = null;
     _ultimaVelMs = 0;
     // Quieto desde el último movimiento, no desde ahora: quien se detuvo hace 5 min lleva
@@ -387,6 +418,45 @@ class DetectorDeMovimiento {
     _ultimoMovimiento = null;
     _filaCambio = _evaluar(l?.t ?? _quietoDesde ?? 0) || _filaCambio;
     return _decision(cambio: true, vaciar: vaciar, motivo: motivo);
+  }
+
+  /// ¿Todo lo leído durante [ConfiguracionDeRastreo.quietoMin] cabe en un radio de
+  /// max(30 m, 2×precisión mediana) alrededor de la posición mediana, con velocidad mediana
+  /// menor a 1 m/s? Exige que la ventana cubra de verdad los minutos (la lectura más vieja
+  /// retenida es de hace al menos quietoMin) y que haya al menos 3 lecturas.
+  bool _ruidoDeMesa(int t) {
+    final ventanaMs = _config.quieto.inMilliseconds;
+    // Se descarta lo anterior a la ventana, salvo la última lectura previa a ella (ancla el borde).
+    while (_ventana.length >= 2 && _ventana[1].t <= t - ventanaMs) {
+      _ventana.removeAt(0);
+    }
+    if (_ventana.length < 3 || _ventana.first.t > t - ventanaMs) return false;
+    final lats = _ventana.map((e) => e.lat).toList()..sort();
+    final lons = _ventana.map((e) => e.lon).toList()..sort();
+    final centro = Lectura(
+        t: 0, lat: _mediana(lats), lon: _mediana(lons), acc: 0, v: 0);
+    final radio = math.max(radioMinimoDeRuidoM,
+        2 * _mediana(_ventana.map((e) => e.acc).toList()..sort()));
+    for (final e in _ventana) {
+      if (_distancia(centro, e) > radio) return false;
+    }
+    // La velocidad del sistema si la hay; si no, la derivada entre lecturas contiguas.
+    final vs = <double>[];
+    for (var i = 0; i < _ventana.length; i++) {
+      final e = _ventana[i];
+      if (e.v >= 0) {
+        vs.add(e.v);
+      } else if (i > 0 && e.t > _ventana[i - 1].t) {
+        vs.add(_distancia(_ventana[i - 1], e) / ((e.t - _ventana[i - 1].t) / 1000));
+      }
+    }
+    if (vs.isEmpty) return true;
+    return _mediana(vs..sort()) < velocidadMedianaDeRuidoMs;
+  }
+
+  static double _mediana(List<double> ordenada) {
+    final n = ordenada.length;
+    return n.isOdd ? ordenada[n ~/ 2] : (ordenada[n ~/ 2 - 1] + ordenada[n ~/ 2]) / 2;
   }
 
   /// Haversine, metros.
