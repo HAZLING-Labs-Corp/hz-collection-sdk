@@ -273,31 +273,39 @@ class RastreoNativo(
      * ETIQUETAS BLE: escanear pide `BLUETOOTH_SCAN` desde Android 12 (grupo «Dispositivos
      * cercanos»). Antes de 12 alcanza con la ubicación que el rastreo ya pide. La app tiene que
      * declararlo SIN `neverForLocation`: con esa marca Android filtra los beacons del escaneo.
+     * `flutter_reactive_ble` además lee el estado del Bluetooth, y eso pide `BLUETOOTH_CONNECT`:
+     * sin él el escaneo falla aunque SCAN esté concedido (visto en el Honor, 01-10-2026). Los dos
+     * son del mismo grupo: un solo diálogo.
      */
-    private fun tienePermisoDeEtiquetas(): Boolean =
-        Build.VERSION.SDK_INT < 31 ||
-            contexto.checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+    private fun permisosDeEtiquetas(): List<String> =
+        listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT).filter { declarado(it) }
 
-    private fun declaroPermisoDeEtiquetas(): Boolean = try {
+    private fun tienePermisoDeEtiquetas(): Boolean =
+        Build.VERSION.SDK_INT < 31 || (declaroPermisoDeEtiquetas() &&
+            permisosDeEtiquetas().all { contexto.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED })
+
+    private fun declarado(permiso: String): Boolean = try {
         val info = contexto.packageManager.getPackageInfo(contexto.packageName, PackageManager.GET_PERMISSIONS)
-        info.requestedPermissions?.contains(Manifest.permission.BLUETOOTH_SCAN) == true
+        info.requestedPermissions?.contains(permiso) == true
     } catch (e: Exception) {
         false
     }
+
+    private fun declaroPermisoDeEtiquetas(): Boolean = declarado(Manifest.permission.BLUETOOTH_SCAN)
 
     private fun pedirPermisoDeEtiquetas(resultado: MethodChannel.Result) {
         if (tienePermisoDeEtiquetas()) return resultado.success(true)
         val a = actividad
         if (a == null || !declaroPermisoDeEtiquetas()) return resultado.success(false)
         permisoDeEtiquetasPendiente = resultado
-        a.requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_SCAN), CODIGO_PERMISO_ETIQUETAS)
+        a.requestPermissions(permisosDeEtiquetas().toTypedArray(), CODIGO_PERMISO_ETIQUETAS)
     }
 
     override fun onRequestPermissionsResult(
         codigo: Int, permisos: Array<out String>, concedidos: IntArray
     ): Boolean {
         if (codigo == CODIGO_PERMISO_ETIQUETAS) {
-            permisoDeEtiquetasPendiente?.success(concedidos.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+            permisoDeEtiquetasPendiente?.success(concedidos.isNotEmpty() && concedidos.all { it == PackageManager.PERMISSION_GRANTED })
             permisoDeEtiquetasPendiente = null
             return true
         }

@@ -28,7 +28,7 @@ class EscanerFalso implements EscanerBle {
   StreamController<AnuncioBle>? abierto;
 
   @override
-  Stream<AnuncioBle> escuchar() {
+  Stream<AnuncioBle> escuchar({bool rapido = false}) {
     aperturas++;
     final c = StreamController<AnuncioBle>();
     abierto = c;

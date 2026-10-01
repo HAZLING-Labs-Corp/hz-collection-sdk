@@ -20,7 +20,8 @@ import 'etiquetas_ble.dart';
 abstract class EscanerBle {
   /// Los anuncios que se oyen mientras dure la suscripción. Si el Bluetooth está apagado o
   /// falta el permiso, el flujo termina con error: quien escucha lo anota y sigue.
-  Stream<AnuncioBle> escuchar();
+  /// [rapido]: escaneo de baja latencia (gasta más) — sólo con una pantalla abierta mirando.
+  Stream<AnuncioBle> escuchar({bool rapido = false});
 }
 
 class EscanerReactivo implements EscanerBle {
@@ -30,11 +31,11 @@ class EscanerReactivo implements EscanerBle {
   static final _feaa = Uuid.parse('feaa');
 
   @override
-  Stream<AnuncioBle> escuchar() {
+  Stream<AnuncioBle> escuchar({bool rapido = false}) {
     final ble = _ble ??= FlutterReactiveBle();
     return ble
-        // sin filtro de servicio: iBeacon y AltBeacon no anuncian ninguno; lowPower = menos batería
-        .scanForDevices(withServices: const [], scanMode: ScanMode.lowPower, requireLocationServicesEnabled: false)
+        // sin filtro de servicio: iBeacon y AltBeacon no anuncian ninguno; lowPower = menos batería (rodando)
+        .scanForDevices(withServices: const [], scanMode: rapido ? ScanMode.lowLatency : ScanMode.lowPower, requireLocationServicesEnabled: false)
         .map((d) => AnuncioBle(
               rssi: d.rssi,
               fabricante: d.manufacturerData.isEmpty ? null : d.manufacturerData,

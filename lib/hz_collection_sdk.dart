@@ -119,6 +119,8 @@ export 'src/rastreo/estado_de_medicion.dart' show EstadoDeMedicion, EstadoDelCon
 export 'src/rastreo/configuracion_de_rastreo.dart' show ConfiguracionDeRastreo;
 export 'src/rastreo/etiquetas/etiquetas_ble.dart' show EtiquetaBle, ConfiguracionDeEtiquetas, Avistamiento, AnuncioBle;
 export 'src/rastreo/etiquetas/escaner_ble.dart' show EscanerBle, EscanerReactivo;
+export 'src/rastreo/etiquetas/buscador_de_etiquetas.dart' show BuscadorDeEtiquetas, EtiquetaCercana;
+export 'src/rastreo/etiquetas/medidor_de_etiqueta.dart' show MedidorDeEtiqueta, LecturaDeSenal;
 export 'src/rastreo/etiquetas/vigia_de_etiquetas.dart' show VigiaDeEtiquetas;
 export 'src/rastreo/cadencia.dart'
     show FilaDeCadencia, CondicionDeCadencia, SituacionDelAparato, evaluarCadencia;
