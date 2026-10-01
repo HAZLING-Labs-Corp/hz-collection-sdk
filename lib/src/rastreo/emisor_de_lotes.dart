@@ -127,8 +127,9 @@ class EmisorDeLotes {
   final Future<bool> Function() registrarClave;
 
   /// El medio declarado para el viaje (`Rastreo.declararMedio`), o `null`: va en el lote que
-  /// se arma ahora. Un lote ya armado no cambia (sus bytes están firmados).
-  final String? Function()? medio;
+  /// se arma ahora, según la hora de su punto más viejo. Un lote ya armado no cambia (sus
+  /// bytes están firmados).
+  final String? Function(int? tMasViejo)? medio;
 
   /// Los envíos del último minuto. La ingesta acepta a lo sumo 6 lotes por minuto por
   /// instalación (RESUMEN-B §8); el SDK se queda en [maximoPorMinuto] para no gastar un 429.
@@ -317,8 +318,10 @@ class EmisorDeLotes {
     if (puntos.isEmpty) return null;
     final pts = [for (final p in puntos) p.punto];
     int? gnss;
+    int? masViejo;
     for (final p in pts) {
       if (gnss == null || p.t > gnss) gnss = p.t;
+      if (masViejo == null || p.t < masViejo) masViejo = p.t;
     }
     final l = await armarLote(
       instalacionId: instalacionId,
@@ -327,7 +330,7 @@ class EmisorDeLotes {
       reloj: await reloj(gnss),
       puntos: pts,
       firmador: firmador,
-      medio: medio?.call(),
+      medio: medio?.call(masViejo),
     );
     await cola.guardarLote(l, [for (final p in puntos) p.id], _ahora().millisecondsSinceEpoch);
     return l.loteId;

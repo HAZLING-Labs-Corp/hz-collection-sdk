@@ -67,6 +67,7 @@ import 'golpe/vigia_de_golpe.dart';
 import 'sin_gps.dart';
 import 'lote.dart';
 import 'medidor_de_hilo.dart';
+import 'medio_del_viaje.dart';
 import 'nativo_de_rastreo.dart';
 
 /// Cómo salió cada paso del enrolamiento. Los tres son independientes: que el sujeto no se
@@ -248,8 +249,8 @@ class Rastreo {
   /// El vocabulario del medio (contrato `MedioDeTransporte`, sin `desconocido`).
   static const mediosValidos = {'pie', 'bici', 'dosRuedas', 'carro', 'bus'};
 
-  String? _medioDeclarado;
-  bool _huboRodando = false;
+  final MedioDelViaje _medio = MedioDelViaje();
+  String? get _medioDeclarado => _medio.declarado;
 
   /// El medio declarado para el viaje en curso, o `null` (manda el del perfil).
   String? get medioDeclarado => _medioDeclarado;
@@ -261,8 +262,7 @@ class Rastreo {
     if (medio != null && !mediosValidos.contains(medio)) {
       throw ArgumentError.value(medio, 'medio', 'uno de ${mediosValidos.join(', ')}');
     }
-    _medioDeclarado = medio;
-    _huboRodando = captura.estado == EstadoDeMovimiento.rodando;
+    _medio.declarar(medio, captura.estado);
     _presenciaT = 0; // la próxima presencia sale ya, con el medio nuevo
     _cambios.add(null);
   }
@@ -458,7 +458,7 @@ class Rastreo {
       configuracion: () => _config,
       loteSeg: () => captura.cadencia.loteSeg ?? FilaDeCadencia.respaldo.loteSeg!,
       registrarClave: _registrarClave,
-      medio: () => _medioDeclarado,
+      medio: _medio.paraLote,
     );
     _emisorDeSucesos ??= EmisorDeSucesos(
       api: api,
@@ -684,21 +684,20 @@ class Rastreo {
         _recientes.add(punto);
         if (_recientes.length > SucesoDelAparato.maximoDePuntos) _recientes.removeAt(0);
         _detectorDeGolpe.velocidad(punto.v, punto.t);
+        _medio.punto(captura.estado, punto.v, _config.arranqueMs);
         _cambios.add(null);
         unawaited(_mandarPresencia(punto));
         unawaited(_intentarEnviar());
       case CambioDeEstado(:final estado, :final motivo, :final vaciar):
         _motivo = motivo;
         _vigia?.moviendose(estado != EstadoDeMovimiento.quieto);
-        if (estado == EstadoDeMovimiento.rodando) _huboRodando = true;
-        _cambios.add(null);
-        if (estado == EstadoDeMovimiento.quieto && _huboRodando && _medioDeclarado != null) {
-          // Terminó el viaje: el último lote sale con su medio, y después se olvida.
-          _huboRodando = false;
-          await _intentarEnviar(forzar: true);
-          _medioDeclarado = null;
+        if (_medio.cambio(estado, DateTime.now().millisecondsSinceEpoch)) {
+          // Terminó el viaje declarado: el medio se olvida, y el último lote (que lleva puntos
+          // del viaje) sale igual con su medio.
           _cambios.add(null);
+          await _intentarEnviar(forzar: true);
         } else {
+          _cambios.add(null);
           // Siempre se mira el emisor: una fila nueva puede traer un `loteSeg` más corto.
           unawaited(_intentarEnviar(forzar: vaciar));
         }
