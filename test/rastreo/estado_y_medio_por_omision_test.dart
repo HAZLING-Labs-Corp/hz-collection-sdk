@@ -173,6 +173,23 @@ void main() {
       expect(await a.consentimientoAnotado(), isTrue);
     });
 
+    test('el consentimiento es de la persona: el «sí» del aparato pasa a quien estaba enrolado, y otra persona no lo hereda', () async {
+      SharedPreferences.setMockInitialValues({'akpush.rastreo.sujeto': 'juan', 'hz_rastreo_consentimiento_anotado': true});
+      final a = await abrir();
+      expect(await a.estadoDelConsentimiento(), publico.EstadoDelConsentimiento.concedido, reason: 'migrado a quien estaba');
+      final p = await SharedPreferences.getInstance();
+      await Future<void>.delayed(Duration.zero);
+      expect(p.getBool('hz_rastreo_consentimiento_anotado'), isNull, reason: 'la clave del aparato se borra');
+      expect(p.getBool('hz_rastreo_consentimiento_anotado:juan'), isTrue);
+      // entra otra persona en el mismo teléfono
+      await p.setString('akpush.rastreo.sujeto', 'carlos');
+      final b = await abrir();
+      expect(await b.estadoDelConsentimiento(), publico.EstadoDelConsentimiento.nuncaPreguntado);
+      expect(b.estadoDeMedicion, publico.EstadoDeMedicion.sinConsentimiento);
+      await p.setString('akpush.rastreo.sujeto', 'juan');
+      expect(await (await abrir()).estadoDelConsentimiento(), publico.EstadoDelConsentimiento.concedido, reason: 'lo de juan sigue siendo de juan');
+    });
+
     test('sin iniciar: estado sinConsentimiento o detenido, y sin última posición', () async {
       SharedPreferences.setMockInitialValues({});
       final a = await abrir();

@@ -103,7 +103,8 @@ class Rastreo {
     _sujetoId = _prefs.getString(_claveSujeto);
     _medio.restaurar(_prefs.getString(_claveMedio));
     _medio.porOmision = _prefs.getString(_claveMedioPorOmision);
-    _consentimiento = _consentimientoDe(_prefs.getBool(_claveConsentimiento));
+    _migrarConsentimientoSinPersona();
+    _consentimiento = _consentimientoDe(_prefs.getBool(_claveDelConsentimiento));
     _cambios.stream.listen((_) => _publicarEstado());
   }
 
@@ -367,6 +368,8 @@ class Rastreo {
     }
     _sujetoId = sujetoId;
     await _prefs.setString(_claveSujeto, sujetoId);
+    // otra persona, otro consentimiento: el de quien estaba antes no vale para ésta
+    _consentimiento = _consentimientoDe(_prefs.getBool(_claveDelConsentimiento));
     if (!await _registrarClave()) {
       errClave = await cola.leer('claveError') ?? 'no se pudo registrar';
     }
@@ -417,17 +420,31 @@ class Rastreo {
   /// ARRANCA: lee la configuración y, si `activo`, prende la captura. Se llama en cada
   static const _claveConsentimiento = 'hz_rastreo_consentimiento_anotado';
 
+  /// 🔴 EL CONSENTIMIENTO ES DE LA PERSONA, NO DEL TELÉFONO. Con una sola clave por aparato, quien
+  /// entraba después en el mismo teléfono heredaba el «sí» del anterior y nadie le preguntaba nada
+  /// (hallazgo H7 del ensayo del video de Si+, 2026-10-01). Sin persona enrolada, la del aparato.
+  String get _claveDelConsentimiento => _sujetoId == null ? _claveConsentimiento : '$_claveConsentimiento:$_sujetoId';
+
+  /// Lo anotado antes de que la clave fuera por persona era de quien estaba enrolado entonces: se
+  /// le pasa a esa persona (no se le vuelve a preguntar) y la clave del aparato se borra.
+  void _migrarConsentimientoSinPersona() {
+    final viejo = _prefs.getBool(_claveConsentimiento);
+    if (viejo == null || _sujetoId == null) return;
+    if (_prefs.getBool(_claveDelConsentimiento) == null) unawaited(_prefs.setBool(_claveDelConsentimiento, viejo));
+    unawaited(_prefs.remove(_claveConsentimiento));
+  }
+
   /// ¿Ya quedó anotado en Collection el sí a la pregunta del rastreo, en este aparato?
   /// 🔴 El permiso del sistema NO es el consentimiento: no dice a qué texto dijo que sí la persona,
   /// y el pulso (§4.10) lo exige anotado («el silencio no es un sí»).
   Future<bool> consentimientoAnotado() async =>
-      (await SharedPreferences.getInstance()).getBool(_claveConsentimiento) ?? false;
+      (await SharedPreferences.getInstance()).getBool(_claveDelConsentimiento) ?? false;
 
   /// Lo que la persona contestó a la pregunta del rastreo en este aparato: nunca se le preguntó,
   /// dijo que sí, o dijo que no. A diferencia de [consentimientoAnotado], distingue el «no» del
   /// silencio: al «no» no se le vuelve a preguntar en cada arranque.
   Future<EstadoDelConsentimiento> estadoDelConsentimiento() async =>
-      _consentimientoDe((await SharedPreferences.getInstance()).getBool(_claveConsentimiento));
+      _consentimientoDe((await SharedPreferences.getInstance()).getBool(_claveDelConsentimiento));
 
   /// Anota en Collection la decisión sobre el rastreo con el TEXTO EXACTO que se le mostró
   /// (categoría `rastreo`). Va con la persona y la instalación: el pulso lo busca por persona,
@@ -446,7 +463,7 @@ class Rastreo {
         instalacionId: instalacionId,
         plataforma: defaultTargetPlatform.name,
       );
-      await (await SharedPreferences.getInstance()).setBool(_claveConsentimiento, concedido);
+      await (await SharedPreferences.getInstance()).setBool(_claveDelConsentimiento, concedido);
       _consentimiento = _consentimientoDe(concedido);
       _cambios.add(null);
       return true;
